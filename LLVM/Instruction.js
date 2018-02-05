@@ -336,7 +336,7 @@ export class LLVMSelectInstruction extends LLVMNonTerminatorInstruction {
 }
 
 export class LLVMPhiInstruction extends LLVMNonTerminatorInstruction {
-    constructor(result, caseValues, caseLabels) {
+    constructor(result, caseValues = [], caseLabels = []) {
         super(result);
         this.caseValues = caseValues;
         this.caseLabels = caseLabels;

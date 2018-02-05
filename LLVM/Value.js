@@ -64,21 +64,25 @@ export class LLVMBasicBlock extends LLVMConstant {
         this.instructions = instructions;
     }
 
-    serializeDeclaration(generateLocalName) {
-        const name = (this.name) ? `${this.name}:\n` : '';
+    fillMissingNames(generateLocalName) {
         if(!this.name)
             this.name = generateLocalName();
-        const instructions = [];
+        for(const instruction of this.instructions)
+            if(instruction.result && !instruction.result.name)
+                instruction.result.name = generateLocalName();
+    }
+
+    serializeDeclaration() {
+        const name = (Number.isInteger(this.name)) ? '' : `${this.name}:\n`,
+              instructions = [];
         for(const instruction of this.instructions) {
-            if(instruction instanceof LLVMTerminatoryInstruction) {
+            if(instruction instanceof LLVMTerminatoryInstruction)
                 if(this.instructions.indexOf(instruction) != this.instructions.length-1)
                     console.error('LLVMBasicBlock: LLVMTerminatoryInstruction is not the last one', this, instruction);
+            if(!instructions.result || Number.isInteger(instructions.result.name))
                 instructions.push(`\t${instruction.serialize()}`);
-            } else {
-                if(!instruction.result.name)
-                    instruction.result.name = generateLocalName();
+            else
                 instructions.push(`\t${instruction.result.serialize()} = ${instruction.serialize()}`);
-            }
         }
         return `${name}${instructions.join('\n')}`;
     }
@@ -121,11 +125,18 @@ export class LLVMFunction extends LLVMConstant {
         this.basicBlocks = basicBlocks;
     }
 
+    fillMissingNames(generateLocalName) {
+        for(const i in this.parameters)
+            if(!this.parameters[i].name)
+                this.parameters[i].name = generateLocalName();
+    }
+
     serializeDeclaration() {
         let nextLocalName = 0;
         function generateLocalName() {
             return nextLocalName++;
         }
+        this.fillMissingNames(generateLocalName);
         const parts = ['define'],
               parameters = [],
               basicBlocks = [];
@@ -145,12 +156,10 @@ export class LLVMFunction extends LLVMConstant {
         for(const i in this.parameters) {
             for(const attribute of this.parameterAttributes[i])
                 parts.push(attribute.serialize());
-            if(this.parameters[i].name)
-                parameters.push(`${this.parameters[i].type.serialize()} ${this.parameters[i].serialize()}`);
-            else {
-                this.parameters[i].name = generateLocalName();
+            if(Number.isInteger(this.parameters[i].name))
                 parameters.push(`${this.parameters[i].type.serialize()}`);
-            }
+            else
+                parameters.push(`${this.parameters[i].type.serialize()} ${this.parameters[i].serialize()}`);
         }
         parts.push(`${this.serialize()}(${parameters.join(', ')})`);
         for(const attribute of this.attributes)
@@ -173,7 +182,9 @@ export class LLVMFunction extends LLVMConstant {
         //     parts.push('(!name !N)*');
         if(this.basicBlocks) {
             for(const basicBlock of this.basicBlocks)
-                basicBlocks.push(basicBlock.serializeDeclaration(generateLocalName));
+                basicBlock.fillMissingNames(generateLocalName)
+            for(const basicBlock of this.basicBlocks)
+                basicBlocks.push(basicBlock.serializeDeclaration());
             parts.push(`{\n${basicBlocks.join('\n')}\n}\n`);
         }
         return parts.join(' ');
