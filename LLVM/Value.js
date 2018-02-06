@@ -151,11 +151,11 @@ export class LLVMFunction extends LLVMConstant {
         if(this.callingConvention)
             parts.push(this.callingConvention);
         for(const attribute of this.returnAttributes)
-            parts.push(attribute.serialize());
+            parts.push((attribute.serialize) ? attribute.serialize() : attribute);
         parts.push(this.returnType.serialize());
         for(const i in this.parameters) {
             for(const attribute of this.parameterAttributes[i])
-                parts.push(attribute.serialize());
+                parts.push((attribute.serialize) ? attribute.serialize() : attribute);
             if(Number.isInteger(this.parameters[i].name))
                 parameters.push(`${this.parameters[i].type.serialize()}`);
             else
@@ -163,7 +163,7 @@ export class LLVMFunction extends LLVMConstant {
         }
         parts.push(`${this.serialize()}(${parameters.join(', ')})`);
         for(const attribute of this.attributes)
-            parts.push(attribute.serialize());
+            parts.push((attribute.serialize) ? attribute.serialize() : attribute);
         if(this.section)
             parts.push(`section ${this.section}`);
         // if(this.comdat)
@@ -211,7 +211,7 @@ export class LLVMAlias extends LLVMConstant {
         // if(this.threadLocal)
         //     parts.push(this.threadLocal);
         for(const attribute of this.attributes)
-            parts.push(attribute.serialize());
+            parts.push((attribute.serialize) ? attribute.serialize() : attribute);
         return `${this.serialize()} = ${parts.join(' ')} ${this.type.serialize()}, ${this.type.serialize()}* ${this.func.serialize()}`;
     }
 }

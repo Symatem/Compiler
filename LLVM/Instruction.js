@@ -384,7 +384,7 @@ export class LLVMCallInstruction extends LLVMNonTerminatorInstruction {
         }
         parts.push(`${this.function.serialize()}(${args.join(', ')})`);
         for(const attribute of this.attributes)
-            parts.push(attribute.serialize());
+            parts.push((attribute.serialize) ? attribute.serialize() : attribute);
         // if(this.operandBundles)
         //     parts.push(`[${operandBundles.join(', ')}]`);
         return parts.join(' ');
