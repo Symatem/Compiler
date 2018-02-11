@@ -46,7 +46,7 @@ export class LLVMCompositeConstant extends LLVMConstant {
         else if(type instanceof LLVMStructureType)
             this.brackets = (type.packed) ? ['<{', '}>'] : '{}';
         else
-            console.error('Invalid type');
+            throw new Error('Invalid type');
     }
 
     serialize() {
@@ -78,7 +78,7 @@ export class LLVMBasicBlock extends LLVMConstant {
         for(const instruction of this.instructions) {
             if(instruction instanceof LLVMTerminatoryInstruction)
                 if(this.instructions.indexOf(instruction) != this.instructions.length-1)
-                    console.error('LLVMBasicBlock: LLVMTerminatoryInstruction is not the last one', this, instruction);
+                    throw new Error('LLVMBasicBlock: LLVMTerminatoryInstruction is not the last one', this, instruction);
             if(!instructions.result || Number.isInteger(instructions.result.name))
                 instructions.push(`\t${instruction.serialize()}`);
             else
@@ -126,9 +126,10 @@ export class LLVMFunction extends LLVMConstant {
     }
 
     fillMissingNames(generateLocalName) {
-        for(const i in this.parameters)
-            if(!this.parameters[i].name)
-                this.parameters[i].name = generateLocalName();
+        this.parameters.forEach(function(parameter, index) {
+            if(!parameter.name)
+                this.parameters[index].name = generateLocalName();
+        }.bind(this));
     }
 
     serializeDeclaration() {
@@ -153,14 +154,14 @@ export class LLVMFunction extends LLVMConstant {
         for(const attribute of this.returnAttributes)
             parts.push((attribute.serialize) ? attribute.serialize() : attribute);
         parts.push(this.returnType.serialize());
-        for(const i in this.parameters) {
-            for(const attribute of this.parameterAttributes[i])
+        this.parameters.forEach(function(parameter, index) {
+            for(const attribute of this.parameterAttributes[index])
                 parts.push((attribute.serialize) ? attribute.serialize() : attribute);
-            if(Number.isInteger(this.parameters[i].name))
-                parameters.push(`${this.parameters[i].type.serialize()}`);
+            if(Number.isInteger(parameter.name))
+                parameters.push(`${parameter.type.serialize()}`);
             else
-                parameters.push(`${this.parameters[i].type.serialize()} ${this.parameters[i].serialize()}`);
-        }
+                parameters.push(`${parameter.type.serialize()} ${parameter.serialize()}`);
+        }.bind(this));
         parts.push(`${this.serialize()}(${parameters.join(', ')})`);
         for(const attribute of this.attributes)
             parts.push((attribute.serialize) ? attribute.serialize() : attribute);

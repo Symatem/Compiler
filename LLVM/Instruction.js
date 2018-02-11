@@ -74,8 +74,10 @@ export class LLVMSwitchInstruction extends LLVMTerminatoryInstruction {
 
     serialize() {
         const cases = [];
-        for(const i in this.caseValues)
-            cases.push(`${this.caseValues[i].type.serialize()} ${this.caseValues[i].serialize()}, ${this.caseLabels[i].type.serialize()} ${this.caseLabels[i].serialize()}`);
+        this.caseValues.forEach(function(caseValue, index) {
+            const caseLabel = this.caseLabels[index];
+            cases.push(`${caseValue.type.serialize()} ${caseValue.serialize()}, ${caseLabel.type.serialize()} ${caseLabel.serialize()}`);
+        }.bind(this));
         return `switch ${this.value.type.serialize()} ${this.value.serialize()}, ${this.defaultLabel.type.serialize()} ${this.defaultLabel.serialize()} [${cases.join(' ')}]`;
     }
 }
@@ -276,13 +278,16 @@ export class LLVMGetElementPointerInstruction extends LLVMNonTerminatorInstructi
 
     serialize() {
         const attributes = (this.attributes.length > 0) ? ` ${this.attributes.join(' ')}` : '',
-              parts = [`getelementptr${attributes} ${this.pointer.type.referencedType.serialize()}`];
-        parts.push(`${this.pointer.type.serialize()} ${this.pointer.serialize()}`);
+              parts = [
+            `getelementptr${attributes} ${this.pointer.type.referencedType.serialize()}`,
+            `${this.pointer.type.serialize()} ${this.pointer.serialize()}`
+        ];
         if(this.indices.length > 0)
-            for(const i in this.indices)
-                parts.push(`${this.indices[i].type.serialize()} ${this.indices[i].serialize()}`);
+            this.indices.forEach(function(element) {
+                parts.push(`${element.type.serialize()} ${element.serialize()}`);
+            }.bind(this));
         else
-            parts[1] += ` ${this.indices.type.serialize()} ${this.indices.serialize()}`;
+            parts.push(`${this.indices.type.serialize()} ${this.indices.serialize()}`);
         // inrange
         return parts.join(', ');
     }
@@ -344,8 +349,9 @@ export class LLVMPhiInstruction extends LLVMNonTerminatorInstruction {
 
     serialize() {
         const cases = [];
-        for(const i in this.caseValues)
-            cases.push(`[${this.caseValues[i].serialize()}, ${this.caseLabels[i].serialize()}]`);
+        this.caseValues.forEach(function(caseValue, index) {
+            cases.push(`[${caseValue.serialize()}, ${this.caseLabels[index].serialize()}]`);
+        }.bind(this));
         return `phi ${this.result.type.serialize()} ${cases.join(', ')}`;
     }
 }
@@ -376,12 +382,12 @@ export class LLVMCallInstruction extends LLVMNonTerminatorInstruction {
             parts.push(this.function.returnType.serialize());
         } else
             parts.push(this.function.type.serialize());
-        for(const i in this.arguments) {
+        this.arguments.forEach(function(argument, index) {
             if(this.func instanceof LLVMFunction)
-                for(const attribute of this.func.parameterAttributes[i])
+                for(const attribute of this.func.parameterAttributes[index])
                     parts.push(attribute.serialize());
-            args.push(`${this.arguments[i].type.serialize()} ${this.arguments[i].serialize()}`);
-        }
+            args.push(`${argument.type.serialize()} ${argument.serialize()}`);
+        }.bind(this));
         parts.push(`${this.function.serialize()}(${args.join(', ')})`);
         for(const attribute of this.attributes)
             parts.push((attribute.serialize) ? attribute.serialize() : attribute);
