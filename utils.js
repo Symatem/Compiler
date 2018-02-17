@@ -154,6 +154,8 @@ export function buildLLVMReturn(context, entry) {
 }
 
 export function finishExecution(context, entry) {
+    if(entry.llvmFunction)
+        context.llvmModule.functions.push(entry.llvmFunction);
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
     if(operationsBlockedByThis)

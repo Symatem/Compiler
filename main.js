@@ -11,10 +11,13 @@ export class CompilerContext {
         LLVMTypeCache.clear(); // TODO: One cache per context?
         this.ontology = ontology;
         this.preDefRuntimeValues = new Map();
-        this.operatorInstances = new Map();
+        this.operatorInstanceBySymbol = new Map();
+        this.operatorInstanceByName = new Map();
         this.llvmConstants = new Map();
         this.llvmModule = new LLVMModule('Symatem');
-        this.namespaceId = this.ontology.registerAdditionalSymbols('Compiler', [
+        this.executionNamespaceId =
+        this.programNamespaceId =
+        this.compilerNamespaceId = this.ontology.registerAdditionalSymbols('Compiler', [
             'Operator',
             'Operation',
             // 'Operand',
@@ -61,7 +64,7 @@ export class CompilerContext {
         this.ontology.setData(BasicBackend.symbolByName.Two, 2);
         this.ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
         const setupRuntimeValue = function(preDefRuntimeValue, size, encoding) {
-            const runtimeEncoding = this.ontology.createSymbol(this.namespaceId);
+            const runtimeEncoding = this.ontology.createSymbol(this.compilerNamespaceId);
             this.ontology.setTriple([preDefRuntimeValue, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
             this.ontology.setTriple([preDefRuntimeValue, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
             this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite], true);
@@ -97,14 +100,11 @@ export class CompilerContext {
     }
 
     llvmCode() {
-        for(const entry of this.operatorInstances.values())
-            if(entry.llvmFunction)
-                this.llvmModule.functions.push(entry.llvmFunction);
         return this.llvmModule.serialize();
     }
 
     createCarrier(destinationOperat, destinationOperandTag, sourceOperat, sourceOperandTag = false) {
-        const carrier = this.ontology.createSymbol(this.namespaceId);
+        const carrier = this.ontology.createSymbol(this.programNamespaceId);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperat, destinationOperat], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperandTag, destinationOperandTag], true);
         if(sourceOperandTag === true || sourceOperandTag === false) {
@@ -118,10 +118,10 @@ export class CompilerContext {
     }
 
     createOperator(operationCount) {
-        const operator = this.ontology.createSymbol(this.namespaceId),
+        const operator = this.ontology.createSymbol(this.programNamespaceId),
               operations = [];
         for(let i = 0; i < operationCount; ++i) {
-            const operation = this.ontology.createSymbol(this.namespaceId);
+            const operation = this.ontology.createSymbol(this.programNamespaceId);
             this.ontology.setTriple([operator, BasicBackend.symbolByName.Operation, operation], true);
             operations.push(operation);
         }
@@ -129,7 +129,7 @@ export class CompilerContext {
     }
 
     createOperandTag(name) {
-        const symbol = this.ontology.createSymbol(this.namespaceId);
+        const symbol = this.ontology.createSymbol(this.programNamespaceId);
         this.ontology.setData(symbol, name);
         return symbol;
     }

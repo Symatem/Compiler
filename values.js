@@ -8,6 +8,7 @@ export const LLVMSymbolType = new LLVMStructureType([new LLVMIntegerType(32), ne
              LLVMVoidConstant = new LLVMLiteralConstant(new LLVMType('void'));
 
 export function encodingToLlvmType(context, encoding, length) {
+    // TODO: LLVMFunctionType
     if(Number.isInteger(length) && length >= 0)
         switch(encoding) {
             case BasicBackend.symbolByName.Symbol:
@@ -60,23 +61,24 @@ export function encodingToLlvmType(context, encoding, length) {
            : new LLVMStructureType(childDataTypes, true);
 }
 
-export function dataValueToLlvmValue(context, dataType, dataValue) {
+function dataValueToLlvmValue(dataType, dataValue) {
     if(typeof dataValue === 'string')
         return new LLVMTextConstant(dataType, dataValue);
     if(dataType instanceof LLVMCompositeType) {
         for(let i = 0; i < dataValue.length; ++i)
-            dataValue[i] = dataValueToLlvmValue(context, (dataType instanceof LLVMStructureType) ? dataType.referencedTypes[i] : dataType.referencedType, dataValue[i]);
+            dataValue[i] = dataValueToLlvmValue((dataType instanceof LLVMStructureType) ? dataType.referencedTypes[i] : dataType.referencedType, dataValue[i]);
         return new LLVMCompositeConstant(dataType, dataValue);
     }
     return new LLVMLiteralConstant(dataType, dataValue);
 }
 
 export function constantToLlvmValue(context, symbol) {
-    // TODO: context.operatorInstances to LLVMFunctionType
+    if(context.operatorInstanceBySymbol.has(symbol))
+        return context.operatorInstanceBySymbol.get(symbol).llvmFunction;
     const encoding = context.ontology.getSolitary(symbol, BasicBackend.symbolByName.Encoding);
     if(encoding === BasicBackend.symbolByName.Void)
-        return new LLVMCompositeConstant(new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(symbol)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(symbol)));
+        return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(symbol)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(symbol))]);
     const dataType = encodingToLlvmType(context, encoding, context.ontology.getLength(symbol)),
           dataValue = context.ontology.getData(symbol);
-    return dataValueToLlvmValue(context, dataType, dataValue);
+    return dataValueToLlvmValue(dataType, dataValue);
 }

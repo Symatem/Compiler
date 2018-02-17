@@ -26,7 +26,7 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
         ];
     } else {
         const output = interpretCallback(context.ontology.getData(inputL), context.ontology.getData(inputR)),
-              outputSymbol = context.ontology.createSymbol(context.namespaceId);
+              outputSymbol = context.ontology.createSymbol(context.executionNamespaceId);
         context.ontology.setData(outputSymbol, output);
         entry.outputOperands.set(BasicBackend.symbolByName.Output, outputSymbol);
     }
@@ -158,7 +158,7 @@ function executeCustomOperator(context, entry) {
 }
 
 export function execute(context, inputOperands) {
-    const entry = {'inputOperands': inputOperands, 'aux': {}},
+    const entry = {'inputOperands': inputOperands},
           parts = [];
     entry.operator = entry.inputOperands.get(BasicBackend.symbolByName.Operator);
     entry.inputOperands = entry.inputOperands.sorted();
@@ -166,10 +166,12 @@ export function execute(context, inputOperands) {
     for(const [sourceOperandTag, source] of entry.inputOperands)
         parts.push(`${sourceOperandTag},${source}`);
     entry.name = `${parts.join(',')}`;
-    if(context.operatorInstances.has(entry.name))
-        return context.operatorInstances.get(entry.name);
-    context.operatorInstances.set(entry.name, entry);
-    entry.aux.inputLlvmValues = convertSources(context, entry.inputOperands);
+    if(context.operatorInstanceByName.has(entry.name))
+        return context.operatorInstanceByName.get(entry.name);
+    entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
+    entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
+    context.operatorInstanceBySymbol.set(entry.symbol, entry);
+    context.operatorInstanceByName.set(entry.name, entry);
     switch(entry.operator) {
         case BasicBackend.symbolByName.Addition:
         case BasicBackend.symbolByName.Subtraction:
