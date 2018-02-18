@@ -1,7 +1,7 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { encodingToLlvmType } from './values.js';
-import { convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
+import { hashOfOperands, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -162,16 +162,13 @@ export function execute(context, inputOperands) {
           parts = [];
     entry.operator = entry.inputOperands.get(BasicBackend.symbolByName.Operator);
     entry.inputOperands = entry.inputOperands.sorted();
-    // TODO: How to match different symbols carriing the same value? (Equivalence)
-    for(const [sourceOperandTag, source] of entry.inputOperands)
-        parts.push(`${sourceOperandTag},${source}`);
-    entry.name = `${parts.join(',')}`;
-    if(context.operatorInstanceByName.has(entry.name))
-        return context.operatorInstanceByName.get(entry.name);
+    entry.hash = hashOfOperands(context, entry.inputOperands);
+    if(context.operatorInstanceByHash.has(entry.hash))
+        return context.operatorInstanceByHash.get(entry.hash);
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
-    context.operatorInstanceByName.set(entry.name, entry);
+    context.operatorInstanceByHash.set(entry.hash, entry);
     switch(entry.operator) {
         case BasicBackend.symbolByName.Addition:
         case BasicBackend.symbolByName.Subtraction:

@@ -5,6 +5,26 @@ import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
 
+export function hashOfOperands(context, operands) {
+    let i = 0, dataLength = operands.size*32*5;
+    for(const [operandTag, operand] of operands)
+        dataLength += Math.ceil(context.ontology.getLength(operand)/8)*8;
+    const dataBytes = new Uint8Array(Math.ceil(dataLength/8)),
+          view = new DataView(dataBytes.buffer);
+    for(const [operandTag, operand] of operands) {
+        const operandDataBytes = context.ontology.getRawData(operand);
+        view.setUint32(i, BasicBackend.namespaceOfSymbol(operandTag), true);
+        view.setUint32(i+4, BasicBackend.identityOfSymbol(operandTag), true);
+        view.setUint32(i+8, BasicBackend.namespaceOfSymbol(operand), true);
+        view.setUint32(i+12, BasicBackend.identityOfSymbol(operand), true);
+        view.setUint32(i+16, operandDataBytes.byteLength, true);
+        i += 20;
+        dataBytes.set(operandDataBytes, i);
+        i += operandDataBytes.byteLength;
+    }
+    return view.djb2Hash();
+}
+
 function deferEvaluation(context, sourceOperand) {
     let sourceLlvmValue = context.llvmConstants.get(sourceOperand);
     if(!sourceLlvmValue) {
@@ -111,7 +131,10 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, instanc
         entry.aux.blockedOperations.add(operation);
         return [instanceEntry, false];
     }
-    // TODO: LLVMFunctionType, calling instead of executing function pointers
+    if(destinationLlvmValues.get(BasicBackend.symbolByName.Operator)) {
+        // TODO: LLVMFunctionType, calling instead of executing function pointers
+        throw new Error('Calling LLVMFunctionType is not implemented yet');
+    }
     if(!instanceEntry.llvmFunction)
         return [instanceEntry, new Map()];
     let sourceLlvmValues = convertSources(context, instanceEntry.outputOperands);
@@ -130,7 +153,7 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, instanc
 }
 
 export function buildLLVMFunction(context, entry, returnType, alwaysinline=true) {
-    entry.llvmFunction = new LLVMFunction(`"${entry.name}"`, returnType, Array.from(entry.aux.inputLlvmValues.values()), [entry.aux.llvmBasicBlock]);
+    entry.llvmFunction = new LLVMFunction(`"${entry.symbol}"`, returnType, Array.from(entry.aux.inputLlvmValues.values()), [entry.aux.llvmBasicBlock]);
     if(alwaysinline)
         entry.llvmFunction.attributes.push('alwaysinline');
     entry.llvmFunction.linkage = 'private';

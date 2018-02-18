@@ -12,7 +12,7 @@ export class CompilerContext {
         this.ontology = ontology;
         this.preDefRuntimeValues = new Map();
         this.operatorInstanceBySymbol = new Map();
-        this.operatorInstanceByName = new Map();
+        this.operatorInstanceByHash = new Map();
         this.llvmConstants = new Map();
         this.llvmModule = new LLVMModule('Symatem');
         this.executionNamespaceId =
