@@ -1,6 +1,7 @@
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
 import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmValue } from './values.js';
+import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -120,34 +121,35 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
     }
 }
 
-export function buildLlvmCall(context, entry, operation, llvmBasicBlock, instanceEntry, destinationLlvmValues) {
-    if(instanceEntry.aux && !instanceEntry.aux.ready) {
-        let operationsBlockedByThis = instanceEntry.aux.operationsBlockedByThis.get(entry);
-        if(!operationsBlockedByThis) {
-            operationsBlockedByThis = new Set();
-            instanceEntry.aux.operationsBlockedByThis.set(entry, operationsBlockedByThis);
-        }
-        operationsBlockedByThis.add(operation);
-        entry.aux.blockedOperations.add(operation);
-        return [instanceEntry, false];
-    }
-    if(destinationLlvmValues.get(BasicBackend.symbolByName.Operator)) {
-        // TODO: LLVMFunctionType, calling instead of executing function pointers
+export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destinationOperands, destinationLlvmValues) {
+    let instanceEntry, sourceLlvmValues;
+    if(destinationLlvmValues.has(BasicBackend.symbolByName.Operator)) {
         throw new Error('Calling LLVMFunctionType is not implemented yet');
+        instanceEntry = {};
+        // TODO: LLVMFunctionType
+    } else {
+        instanceEntry = execute(context, destinationOperands);
+        if(instanceEntry.aux && !instanceEntry.aux.ready) {
+            let operationsBlockedByThis = instanceEntry.aux.operationsBlockedByThis.get(entry);
+            if(!operationsBlockedByThis) {
+                operationsBlockedByThis = new Set();
+                instanceEntry.aux.operationsBlockedByThis.set(entry, operationsBlockedByThis);
+            }
+            operationsBlockedByThis.add(operation);
+            entry.aux.blockedOperations.add(operation);
+            return [instanceEntry, false];
+        }
+        if(!instanceEntry.llvmFunction)
+            return [instanceEntry, new Map()];
+        sourceLlvmValues = convertSources(context, instanceEntry.outputOperands);
     }
-    if(!instanceEntry.llvmFunction)
-        return [instanceEntry, new Map()];
-    let sourceLlvmValues = convertSources(context, instanceEntry.outputOperands);
     const returnLlvmValue = (sourceLlvmValues.size > 1) ? new LLVMValue(instanceEntry.llvmFunction.returnType) :
-                            ((sourceLlvmValues.size === 1) ? sourceLlvmValues.values().next().value : LLVMVoidConstant),
-          instruction = new LLVMCallInstruction(returnLlvmValue, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
-    llvmBasicBlock.instructions.push(instruction);
+                            ((sourceLlvmValues.size === 1) ? sourceLlvmValues.values().next().value : LLVMVoidConstant);
+    llvmBasicBlock.instructions.push(new LLVMCallInstruction(returnLlvmValue, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values())));
     if(sourceLlvmValues.size > 1) {
         let index = 0;
-        for(const llvmSource of sourceLlvmValues.values()) {
-            const instruction = new LLVMExtractValueInstruction(llvmSource, returnLlvmValue, [index++]);
-            llvmBasicBlock.instructions.push(instruction);
-        }
+        for(const llvmSource of sourceLlvmValues.values())
+            llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(llvmSource, returnLlvmValue, [index++]));
     }
     return [instanceEntry, sourceLlvmValues];
 }

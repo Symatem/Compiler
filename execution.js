@@ -57,7 +57,7 @@ function executePrimitiveIf(context, entry) {
         entry.aux.resume = function() {
             const [instanceEntry, sourceLlvmValues] = buildLlvmCall(
                 context, entry, operation, entry.aux.llvmBasicBlock,
-                execute(context, entry.aux.operatDestinationOperands[operation]),
+                entry.aux.operatDestinationOperands[operation],
                 entry.aux.operatDestinationLlvmValues[operation]
             );
             if(!sourceLlvmValues)
@@ -81,7 +81,7 @@ function executePrimitiveIf(context, entry) {
                   label = entry.aux.phiInstruction.caseLabels[operation],
                   [instanceEntry, sourceLlvmValues] = buildLlvmCall(
                 context, entry, operation, label,
-                execute(context, entry.aux.operatDestinationOperands[operation]),
+                entry.aux.operatDestinationOperands[operation],
                 entry.aux.operatDestinationLlvmValues[operation]
             );
             if(!sourceLlvmValues)
@@ -137,7 +137,7 @@ function executeCustomOperator(context, entry) {
                 entry,
                 operation,
                 entry.aux.llvmBasicBlock,
-                execute(context, entry.aux.operatDestinationOperands.get(operation)),
+                entry.aux.operatDestinationOperands.get(operation),
                 entry.aux.operatDestinationLlvmValues.get(operation)
             );
             if(sourceLlvmValues)
