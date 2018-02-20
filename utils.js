@@ -1,3 +1,4 @@
+import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
 import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmValue } from './values.js';
