@@ -11,8 +11,6 @@ export function encodingToLlvmType(context, encoding, length) {
     // TODO: LLVMFunctionType
     if(Number.isInteger(length) && length >= 0)
         switch(encoding) {
-            case BasicBackend.symbolByName.Symbol:
-                return LLVMSymbolType;
             case BasicBackend.symbolByName.Void:
                 return new LLVMType('void');
             case BasicBackend.symbolByName.BinaryNumber:
@@ -75,10 +73,11 @@ function dataValueToLlvmValue(dataType, dataValue) {
 export function constantToLlvmValue(context, symbol) {
     if(context.operatorInstanceBySymbol.has(symbol))
         return context.operatorInstanceBySymbol.get(symbol).llvmFunction;
-    const encoding = context.ontology.getSolitary(symbol, BasicBackend.symbolByName.Encoding);
-    if(encoding === BasicBackend.symbolByName.Void)
+    const encoding = context.ontology.getSolitary(symbol, BasicBackend.symbolByName.Encoding),
+          length = context.ontology.getLength(symbol);
+    if(encoding === BasicBackend.symbolByName.Void && length === 0)
         return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(symbol)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(symbol))]);
-    const dataType = encodingToLlvmType(context, encoding, context.ontology.getLength(symbol)),
+    const dataType = encodingToLlvmType(context, encoding, length),
           dataValue = context.ontology.getData(symbol);
     return dataValueToLlvmValue(dataType, dataValue);
 }

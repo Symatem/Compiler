@@ -28,16 +28,16 @@ export function hashOfOperands(context, operands) {
 }
 
 function deferEvaluation(context, sourceOperand) {
-    let sourceLlvmValue = context.llvmConstants.get(sourceOperand);
-    if(!sourceLlvmValue) {
-        sourceLlvmValue = constantToLlvmValue(context, sourceOperand);
-        context.llvmConstants.set(sourceOperand, sourceLlvmValue);
+    const sourceLlvmValue = constantToLlvmValue(context, sourceOperand),
+          sourceLlvmType = sourceLlvmValue.type.serialize();
+    sourceOperand = context.runtimeValueCache.get(sourceLlvmType);
+    if(!sourceOperand) {
+        const runtimeEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
+        sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
+        context.runtimeValueCache.set(sourceLlvmType, sourceOperand);
     }
-    const encoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding),
-          size = context.ontology.getLength(sourceOperand);
-    sourceOperand = context.preDefRuntimeValues.get(encoding+','+size);
-    if(!sourceOperand)
-        throw new Error('Unknown RuntimeValue');
     return [sourceOperand, sourceLlvmValue];
 }
 

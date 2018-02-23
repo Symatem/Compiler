@@ -1,6 +1,7 @@
 import { LLVMTypeCache } from './LLVM/Type.js';
 import { LLVMAlias } from './LLVM/Value.js';
 import { LLVMModule } from './LLVM/Module.js';
+import { encodingToLlvmType } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -10,10 +11,9 @@ export class CompilerContext {
     constructor(ontology) {
         LLVMTypeCache.clear(); // TODO: One cache per context?
         this.ontology = ontology;
-        this.preDefRuntimeValues = new Map();
+        this.runtimeValueCache = new Map();
         this.operatorInstanceBySymbol = new Map();
         this.operatorInstanceByHash = new Map();
-        this.llvmConstants = new Map();
         this.llvmModule = new LLVMModule('Symatem');
         this.executionNamespaceId =
         this.programNamespaceId =
@@ -35,6 +35,7 @@ export class CompilerContext {
             'Two',
             'ThirtyTwo',
             'Vector',
+            'Symbol',
             'Boolean',
             'Natural32',
             'Integer32',
@@ -63,16 +64,17 @@ export class CompilerContext {
         this.ontology.setData(BasicBackend.symbolByName.One, 1);
         this.ontology.setData(BasicBackend.symbolByName.Two, 2);
         this.ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
-        const setupRuntimeValue = function(preDefRuntimeValue, size, encoding) {
+        const setupRuntimeValue = function(runtimeValue, size, encoding, count=BasicBackend.symbolByName.One) {
             const runtimeEncoding = this.ontology.createSymbol(this.compilerNamespaceId);
-            this.ontology.setTriple([preDefRuntimeValue, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
-            this.ontology.setTriple([preDefRuntimeValue, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
+            this.ontology.setTriple([runtimeValue, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
+            this.ontology.setTriple([runtimeValue, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
             this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite], true);
             this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Count, BasicBackend.symbolByName.One], true);
             this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.SlotSize, size], true);
             this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Default, encoding], true);
-            this.preDefRuntimeValues.set(encoding+','+this.ontology.getData(size), preDefRuntimeValue);
+            this.runtimeValueCache.set(encodingToLlvmType(this, runtimeEncoding, size*count).serialize(), runtimeValue);
         }.bind(this);
+        setupRuntimeValue(BasicBackend.symbolByName.Symbol, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Two);
         setupRuntimeValue(BasicBackend.symbolByName.Boolean, BasicBackend.symbolByName.One, BasicBackend.symbolByName.BinaryNumber);
         setupRuntimeValue(BasicBackend.symbolByName.Natural32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber);
         setupRuntimeValue(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
