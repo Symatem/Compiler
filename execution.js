@@ -1,10 +1,25 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { encodingToLlvmType } from './values.js';
-import { hashOfOperands, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
+import { hashOfOperands, deferEvaluation, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
+
+function executePrimitiveDeferEvaluation(context, entry) {
+    let outputOperand = entry.inputOperands.get(BasicBackend.symbolByName.Input),
+        outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
+    if(!outputLlvmValue)
+        [outputOperand, outputLlvmValue] = deferEvaluation(context, outputOperand);
+    entry.outputOperands = new Map();
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    entry.aux.llvmBasicBlock = new LLVMBasicBlock();
+    entry.aux.llvmBasicBlock.instructions = [
+        new LLVMReturnInstruction(outputLlvmValue)
+    ];
+    buildLLVMFunction(context, entry, outputLlvmValue.type);
+    finishExecution(context, entry);
+}
 
 function executePrimitiveBinaryInstruction(context, entry, compileCallback, interpretCallback) {
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
@@ -170,6 +185,9 @@ export function execute(context, inputOperands) {
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
     context.operatorInstanceByHash.set(entry.hash, entry);
     switch(entry.operator) {
+        case BasicBackend.symbolByName.DeferEvaluation:
+            executePrimitiveDeferEvaluation(context, entry);
+            break;
         case BasicBackend.symbolByName.Addition:
         case BasicBackend.symbolByName.Subtraction:
         case BasicBackend.symbolByName.Multiplication:

@@ -27,7 +27,7 @@ export function hashOfOperands(context, operands) {
     return view.djb2Hash();
 }
 
-function deferEvaluation(context, sourceOperand) {
+export function deferEvaluation(context, sourceOperand) {
     const sourceLlvmValue = constantToLlvmValue(context, sourceOperand),
           sourceLlvmType = sourceLlvmValue.type.serialize();
     sourceOperand = context.runtimeValueCache.get(sourceLlvmType);
@@ -58,13 +58,6 @@ export function getRuntimeValue(context, sourceOperandTag, sourceOperands, sourc
         : deferEvaluation(context, sourceOperand);
 }
 
-function destinationLlvmValueOfCarrier(context, carrier, sourceOperand, sourceLlvmValue) {
-    // TODO: Decide, deferEvaluation in carrier or as operator
-    return (sourceLlvmValue || !context.ontology.getTriple([carrier, BasicBackend.symbolByName.Carry, BasicBackend.symbolByName.RuntimeValue]))
-        ? [sourceOperand, sourceLlvmValue]
-        : deferEvaluation(context, sourceOperand);
-}
-
 export function collectDestinations(context, entry, destinationOperat) {
     let carriers = new Map(),
         referenceCount = 0;
@@ -74,18 +67,17 @@ export function collectDestinations(context, entry, destinationOperat) {
     const destinationOperands = new Map(),
           destinationLlvmValues = new Map();
     for(const [destinationOperandTag, carrier] of carriers) {
-        let destinationOperand,
-            destinationLlvmValue;
-        if(context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat) === BasicBackend.symbolByName.Void) {
-            const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperand);
+        let destinationOperand;
+        const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperand);
+        if(sourceOperand !== BasicBackend.symbolByName.Void) {
             if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue]))
                 throw new Error('Const carrier uses a RuntimeValue as source operand');
-            [destinationOperand, destinationLlvmValue] = destinationLlvmValueOfCarrier(context, carrier, sourceOperand);
-        } else
+            destinationOperand = sourceOperand;
+        } else {
             ++referenceCount;
+            destinationLlvmValues.set(destinationOperandTag, undefined);
+        }
         destinationOperands.set(destinationOperandTag, destinationOperand);
-        if(destinationOperand == undefined || destinationLlvmValue != undefined)
-            destinationLlvmValues.set(destinationOperandTag, destinationLlvmValue);
     }
     entry.aux.operatDestinationOperands.set(destinationOperat, destinationOperands);
     entry.aux.operatDestinationLlvmValues.set(destinationOperat, destinationLlvmValues);
@@ -111,9 +103,10 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
                 entry.aux.unsatisfiedOperations.set(destinationOperat, referenceCount);
         }
         const sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag),
+              sourceOperand = sourceOperands.get(sourceOperandTag),
+              sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
               destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
-              destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat),
-              [sourceOperand, sourceLlvmValue] = destinationLlvmValueOfCarrier(context, carrier, sourceOperands.get(sourceOperandTag), sourceLlvmValues.get(sourceOperandTag));
+              destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
         if(sourceLlvmValue)
             destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);

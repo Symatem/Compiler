@@ -27,7 +27,6 @@ export class CompilerContext {
             'DestinationOperat',
             'SourceOperandTag',
             'DestinationOperandTag',
-            'Carry',
             'RuntimeValue',
 
             'RuntimeEncoding',
@@ -46,6 +45,7 @@ export class CompilerContext {
             'Input',
             'Output',
 
+            'DeferEvaluation',
             'Addition',
             'Subtraction',
             'Multiplication',
@@ -109,14 +109,19 @@ export class CompilerContext {
         const carrier = this.ontology.createSymbol(this.programNamespaceId);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperat, destinationOperat], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperandTag, destinationOperandTag], true);
-        if(sourceOperandTag === true || sourceOperandTag === false) {
-            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperand, sourceOperat], true);
-            if(sourceOperandTag)
-                this.ontology.setTriple([carrier, BasicBackend.symbolByName.Carry, BasicBackend.symbolByName.RuntimeValue], true);
-        } else {
+        if(sourceOperandTag !== true && sourceOperandTag !== false) {
             this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperat, sourceOperat], true);
             this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperandTag, sourceOperandTag], true);
-        }
+        } else if(sourceOperandTag) {
+            const deferEvaluationOperation = this.ontology.createSymbol(this.programNamespaceId),
+                  operator = this.ontology.getSolitary(BasicBackend.symbolByName.Operation, destinationOperat, 0);
+            this.ontology.setTriple([operator, BasicBackend.symbolByName.Operation, deferEvaluationOperation], true);
+            this.createCarrier(deferEvaluationOperation, BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.DeferEvaluation);
+            this.createCarrier(deferEvaluationOperation, BasicBackend.symbolByName.Input, sourceOperat);
+            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperat, deferEvaluationOperation], true);
+            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperandTag, BasicBackend.symbolByName.Output], true);
+        } else
+            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperand, sourceOperat], true);
     }
 
     createOperator(operationCount) {
