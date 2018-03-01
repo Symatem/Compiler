@@ -64,7 +64,7 @@ export function collectDestinations(context, entry, destinationOperat) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat]))
         carriers.set(context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag), triple[0]);
     carriers = carriers.sorted();
-    const destinationOperands = new Map(),
+    const destinationOperands = (destinationOperat === entry.operator) ? entry.outputOperands : new Map(),
           destinationLlvmValues = new Map();
     for(const [destinationOperandTag, carrier] of carriers) {
         let destinationOperand;
@@ -81,10 +81,9 @@ export function collectDestinations(context, entry, destinationOperat) {
     }
     entry.aux.operatDestinationOperands.set(destinationOperat, destinationOperands);
     entry.aux.operatDestinationLlvmValues.set(destinationOperat, destinationLlvmValues);
-    if(destinationOperat === entry.operator) {
-        entry.outputOperands = destinationOperands;
+    if(destinationOperat === entry.operator)
         entry.aux.outputLlvmValues = destinationLlvmValues;
-    } else if(referenceCount === 0)
+    else if(referenceCount === 0)
         entry.aux.readyOperations.push(destinationOperat);
     else
         entry.aux.unsatisfiedOperations.set(destinationOperat, referenceCount);

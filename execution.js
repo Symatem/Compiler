@@ -11,7 +11,6 @@ function executePrimitiveDeferEvaluation(context, entry) {
         outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
     if(!outputLlvmValue)
         [outputOperand, outputLlvmValue] = deferEvaluation(context, outputOperand);
-    entry.outputOperands = new Map();
     entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
     entry.aux.llvmBasicBlock.instructions = [
@@ -23,7 +22,6 @@ function executePrimitiveDeferEvaluation(context, entry) {
 
 function executePrimitiveBinaryInstruction(context, entry, compileCallback, interpretCallback) {
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
-    entry.outputOperands = new Map();
     const inputL = entry.inputOperands.get(BasicBackend.symbolByName.InputL),
           inputR = entry.inputOperands.get(BasicBackend.symbolByName.InputR);
     if(entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputL) || entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputR)) {
@@ -49,7 +47,6 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
 }
 
 function executePrimitiveIf(context, entry) {
-    entry.outputOperands = new Map();
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
     entry.aux.operatDestinationLlvmValues = [];
     entry.aux.operatDestinationOperands = [];
@@ -181,6 +178,7 @@ export function execute(context, inputOperands) {
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
+    entry.outputOperands = new Map();
     entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
     context.operatorInstanceByHash.set(entry.hash, entry);
