@@ -7,6 +7,14 @@ import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
 
+export function linkOperandTriples(context, entry, attribute) {
+    const operandsSymbol = context.ontology.createSymbol(context.executionNamespaceId),
+          operands = (attribute === BasicBackend.symbolByName.InputOperands) ? entry.inputOperands : entry.outputOperands;
+    for(const [operandTag, operand] of operands)
+        context.ontology.setTriple([operandsSymbol, operandTag, operand], true);
+    context.ontology.setTriple([entry.symbol, attribute, operandsSymbol], true);
+}
+
 export function hashOfOperands(context, operands) {
     let i = 0, dataLength = operands.size*32*5;
     for(const [operandTag, operand] of operands)
@@ -176,6 +184,7 @@ export function finishExecution(context, entry) {
         context.llvmModule.functions.push(entry.llvmFunction);
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
+    linkOperandTriples(context, entry, BasicBackend.symbolByName.OutputOperands);
     if(operationsBlockedByThis)
         for(const [blockedEntry, operations] of operationsBlockedByThis) {
             for(const operation of operations) {

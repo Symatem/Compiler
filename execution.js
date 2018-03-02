@@ -1,7 +1,7 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { encodingToLlvmType } from './values.js';
-import { hashOfOperands, deferEvaluation, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
+import { linkOperandTriples, hashOfOperands, deferEvaluation, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -177,9 +177,11 @@ export function execute(context, inputOperands) {
     entry.hash = hashOfOperands(context, entry.inputOperands);
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
-    entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     entry.outputOperands = new Map();
     entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
+    entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
+    linkOperandTriples(context, entry, BasicBackend.symbolByName.InputOperands);
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
     context.operatorInstanceByHash.set(entry.hash, entry);
     switch(entry.operator) {

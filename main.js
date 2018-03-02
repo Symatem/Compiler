@@ -22,6 +22,9 @@ export class CompilerContext {
             'Operation',
             // 'Operand',
             // 'Carrier',
+            'InputOperands',
+            'OutputOperands',
+
             'SourceOperand',
             'SourceOperat',
             'DestinationOperat',
