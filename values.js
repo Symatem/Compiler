@@ -59,18 +59,18 @@ export function encodingToLlvmType(context, encoding, length) {
            : new LLVMStructureType(childDataTypes, true);
 }
 
-function dataValueToLlvmValue(dataType, dataValue) {
+function dataValueToLlvmConstant(dataType, dataValue) {
     if(typeof dataValue === 'string')
         return new LLVMTextConstant(dataType, dataValue);
     if(dataType instanceof LLVMCompositeType) {
         for(let i = 0; i < dataValue.length; ++i)
-            dataValue[i] = dataValueToLlvmValue((dataType instanceof LLVMStructureType) ? dataType.referencedTypes[i] : dataType.referencedType, dataValue[i]);
+            dataValue[i] = dataValueToLlvmConstant((dataType instanceof LLVMStructureType) ? dataType.referencedTypes[i] : dataType.referencedType, dataValue[i]);
         return new LLVMCompositeConstant(dataType, dataValue);
     }
     return new LLVMLiteralConstant(dataType, dataValue);
 }
 
-export function constantToLlvmValue(context, symbol) {
+export function constantToLlvmConstant(context, symbol) {
     if(context.operatorInstanceBySymbol.has(symbol))
         return context.operatorInstanceBySymbol.get(symbol).llvmFunction;
     const encoding = context.ontology.getSolitary(symbol, BasicBackend.symbolByName.Encoding),
@@ -79,5 +79,5 @@ export function constantToLlvmValue(context, symbol) {
         return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(symbol)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(symbol))]);
     const dataType = encodingToLlvmType(context, encoding, length),
           dataValue = context.ontology.getData(symbol);
-    return dataValueToLlvmValue(dataType, dataValue);
+    return dataValueToLlvmConstant(dataType, dataValue);
 }

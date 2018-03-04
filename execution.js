@@ -101,7 +101,7 @@ function executePrimitiveIf(context, entry) {
             label.instructions[0].attributes.push('alwaysinline');
             label.instructions.push(entry.aux.branchToExit);
             const [outputOperand, outputLlvmValue] = getRuntimeValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
-            entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue; // TODO: What if not RuntimeValue ?
+            entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue;
             if(entry.aux.ready) {
                 if(entry.aux.phiInstruction.caseValues[0].type !== entry.aux.phiInstruction.caseValues[1].type)
                     throw new Error('Then Output and Else Output type mismatch');

@@ -22,10 +22,10 @@ export class CompilerContext {
             'Operation',
             // 'Operand',
             // 'Carrier',
+            'Constant',
             'InputOperands',
             'OutputOperands',
 
-            'SourceOperand',
             'SourceOperat',
             'DestinationOperat',
             'SourceOperandTag',
@@ -123,8 +123,10 @@ export class CompilerContext {
             this.createCarrier(deferEvaluationOperation, BasicBackend.symbolByName.Input, sourceOperat);
             this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperat, deferEvaluationOperation], true);
             this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperandTag, BasicBackend.symbolByName.Output], true);
-        } else
-            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperand, sourceOperat], true);
+        } else {
+            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperat, sourceOperat], true);
+            this.ontology.setTriple([carrier, BasicBackend.symbolByName.SourceOperandTag, BasicBackend.symbolByName.Constant], true);
+        }
     }
 
     createOperator(operationCount) {

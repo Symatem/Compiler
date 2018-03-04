@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmValue } from './values.js';
+import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmConstant } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -36,7 +36,7 @@ export function hashOfOperands(context, operands) {
 }
 
 export function deferEvaluation(context, sourceOperand) {
-    const sourceLlvmValue = constantToLlvmValue(context, sourceOperand),
+    const sourceLlvmValue = constantToLlvmConstant(context, sourceOperand),
           sourceLlvmType = sourceLlvmValue.type.serialize();
     sourceOperand = context.runtimeValueCache.get(sourceLlvmType);
     if(!sourceOperand) {
@@ -76,8 +76,9 @@ export function collectDestinations(context, entry, destinationOperat) {
           destinationLlvmValues = new Map();
     for(const [destinationOperandTag, carrier] of carriers) {
         let destinationOperand;
-        const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperand);
-        if(sourceOperand !== BasicBackend.symbolByName.Void) {
+        const sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
+        if(sourceOperandTag === BasicBackend.symbolByName.Constant) {
+            const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat);
             if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue]))
                 throw new Error('Const carrier uses a RuntimeValue as source operand');
             destinationOperand = sourceOperand;
@@ -100,7 +101,19 @@ export function collectDestinations(context, entry, destinationOperat) {
 export function propagateSources(context, entry, sourceOperat, sourceOperands, sourceLlvmValues) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.SourceOperat, sourceOperat])) {
         const carrier = triple[0],
-              destinationOperat = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperat);
+              sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
+        if(sourceOperandTag === BasicBackend.symbolByName.Constant)
+            continue;
+        const sourceOperand = sourceOperands.get(sourceOperandTag),
+              sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
+              destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
+              destinationOperat = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperat),
+              destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
+        entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
+        if(sourceLlvmValue)
+            destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);
+        else
+            destinationLlvmValues.delete(destinationOperandTag);
         if(destinationOperat !== entry.operator) {
             const referenceCount = entry.aux.unsatisfiedOperations.get(destinationOperat)-1;
             if(referenceCount === 0) {
@@ -109,16 +122,6 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
             } else
                 entry.aux.unsatisfiedOperations.set(destinationOperat, referenceCount);
         }
-        const sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag),
-              sourceOperand = sourceOperands.get(sourceOperandTag),
-              sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
-              destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
-              destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
-        entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
-        if(sourceLlvmValue)
-            destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);
-        else
-            destinationLlvmValues.delete(destinationOperandTag);
     }
 }
 
