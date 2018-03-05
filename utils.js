@@ -1,11 +1,35 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
-import { LLVMReturnInstruction, LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
+import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
 import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmConstant } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
+
+export function bundleLLVMValues(context, llvmBasicBlock, destinationLlvmValues) {
+    if(destinationLlvmValues.length < 2)
+        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
+    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
+    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
+        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
+        llvmBasicBlock.instructions.push(instruction);
+        sourceLlvmValue = instruction.result;
+    });
+    return sourceLlvmValue;
+}
+
+export function unbundleLLVMValues(context, llvmBasicBlock, sourceLlvmValues) {
+    if(sourceLlvmValues.length < 2)
+        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
+          destinationLlvmValue = new LLVMValue(dataType);
+    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
+        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
+    });
+    return destinationLlvmValue;
+}
 
 export function linkOperandTriples(context, entry, attribute) {
     const operandsSymbol = context.ontology.createSymbol(context.executionNamespaceId),
@@ -38,13 +62,13 @@ export function hashOfOperands(context, operands) {
 export function deferEvaluation(context, sourceOperand) {
     const sourceLlvmValue = constantToLlvmConstant(context, sourceOperand),
           sourceLlvmType = sourceLlvmValue.type.serialize();
-    sourceOperand = context.runtimeValueCache.get(sourceLlvmType);
+    sourceOperand = context.typedPlaceholderCache.get(sourceLlvmType);
     if(!sourceOperand) {
-        const runtimeEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
+        const placeholderEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
         sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
-        context.runtimeValueCache.set(sourceLlvmType, sourceOperand);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
+        context.typedPlaceholderCache.set(sourceLlvmType, sourceOperand);
     }
     return [sourceOperand, sourceLlvmValue];
 }
@@ -52,14 +76,14 @@ export function deferEvaluation(context, sourceOperand) {
 export function convertSources(context, sourceOperands) {
     const sourceLlvmValues = new Map();
     for(const [sourceOperandTag, sourceOperand] of sourceOperands)
-        if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue])) {
-            const llvmType = encodingToLlvmType(context, context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.RuntimeEncoding));
+        if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder])) {
+            const llvmType = encodingToLlvmType(context, context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding));
             sourceLlvmValues.set(sourceOperandTag, new LLVMValue(llvmType));
         }
     return sourceLlvmValues;
 }
 
-export function getRuntimeValue(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
+export function getTypedPlaceholder(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
     const sourceOperand = sourceOperands.get(sourceOperandTag);
     return (sourceLlvmValues.has(sourceOperandTag))
         ? [sourceOperand, sourceLlvmValues.get(sourceOperandTag)]
@@ -79,8 +103,8 @@ export function collectDestinations(context, entry, destinationOperat) {
         const sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
         if(sourceOperandTag === BasicBackend.symbolByName.Constant) {
             const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat);
-            if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue]))
-                throw new Error('Const carrier uses a RuntimeValue as source operand');
+            if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
+                throw new Error('Const carrier uses a TypedPlaceholder as source operand');
             destinationOperand = sourceOperand;
         } else {
             ++referenceCount;
@@ -147,14 +171,9 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destina
             return [instanceEntry, new Map()];
         sourceLlvmValues = convertSources(context, instanceEntry.outputOperands);
     }
-    const returnLlvmValue = (sourceLlvmValues.size > 1) ? new LLVMValue(instanceEntry.llvmFunction.returnType) :
-                            ((sourceLlvmValues.size === 1) ? sourceLlvmValues.values().next().value : LLVMVoidConstant);
-    llvmBasicBlock.instructions.push(new LLVMCallInstruction(returnLlvmValue, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values())));
-    if(sourceLlvmValues.size > 1) {
-        let index = 0;
-        for(const llvmSource of sourceLlvmValues.values())
-            llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(llvmSource, returnLlvmValue, [index++]));
-    }
+    const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
+    llvmBasicBlock.instructions.push(callInstruction);
+    callInstruction.result = unbundleLLVMValues(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
     return [instanceEntry, sourceLlvmValues];
 }
 
@@ -163,23 +182,6 @@ export function buildLLVMFunction(context, entry, returnType, alwaysinline=true)
     if(alwaysinline)
         entry.llvmFunction.attributes.push('alwaysinline');
     entry.llvmFunction.linkage = 'private';
-}
-
-export function buildLLVMReturn(context, entry) {
-    let returnLlvmValue;
-    if(entry.aux.outputLlvmValues.size > 1) {
-        const dataType = new LLVMStructureType(Array.from(entry.aux.outputLlvmValues.values()).map(value => value.type));
-        returnLlvmValue = new LLVMLiteralConstant(dataType);
-        let index = 0;
-        for(const llvmDestination of entry.aux.outputLlvmValues.values()) {
-            const instruction = new LLVMInsertValueInstruction(new LLVMValue(returnLlvmValue.type), returnLlvmValue, [index++], llvmDestination);
-            entry.aux.llvmBasicBlock.instructions.push(instruction);
-            returnLlvmValue = instruction.result;
-        }
-    } else
-        returnLlvmValue = (entry.aux.outputLlvmValues.size === 1) ? entry.aux.outputLlvmValues.values().next().value : LLVMVoidConstant;
-    entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnLlvmValue));
-    return returnLlvmValue;
 }
 
 export function finishExecution(context, entry) {

@@ -11,7 +11,7 @@ export class CompilerContext {
     constructor(ontology) {
         LLVMTypeCache.clear(); // TODO: One cache per context?
         this.ontology = ontology;
-        this.runtimeValueCache = new Map();
+        this.typedPlaceholderCache = new Map();
         this.operatorInstanceBySymbol = new Map();
         this.operatorInstanceByHash = new Map();
         this.llvmModule = new LLVMModule('Symatem');
@@ -30,9 +30,9 @@ export class CompilerContext {
             'DestinationOperat',
             'SourceOperandTag',
             'DestinationOperandTag',
-            'RuntimeValue',
+            'TypedPlaceholder',
 
-            'RuntimeEncoding',
+            'PlaceholderEncoding',
             'One',
             'Two',
             'ThirtyTwo',
@@ -67,21 +67,21 @@ export class CompilerContext {
         this.ontology.setData(BasicBackend.symbolByName.One, 1);
         this.ontology.setData(BasicBackend.symbolByName.Two, 2);
         this.ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
-        const setupRuntimeValue = function(runtimeValue, size, encoding, count=BasicBackend.symbolByName.One) {
-            const runtimeEncoding = this.ontology.createSymbol(this.compilerNamespaceId);
-            this.ontology.setTriple([runtimeValue, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.RuntimeValue], true);
-            this.ontology.setTriple([runtimeValue, BasicBackend.symbolByName.RuntimeEncoding, runtimeEncoding], true);
-            this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite], true);
-            this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Count, BasicBackend.symbolByName.One], true);
-            this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.SlotSize, size], true);
-            this.ontology.setTriple([runtimeEncoding, BasicBackend.symbolByName.Default, encoding], true);
-            this.runtimeValueCache.set(encodingToLlvmType(this, runtimeEncoding, size*count).serialize(), runtimeValue);
+        const setupTypedPlaceholder = function(typedPlaceholder, size, encoding, count=BasicBackend.symbolByName.One) {
+            const placeholderEncoding = this.ontology.createSymbol(this.compilerNamespaceId);
+            this.ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
+            this.ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
+            this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite], true);
+            this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Count, BasicBackend.symbolByName.One], true);
+            this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.SlotSize, size], true);
+            this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Default, encoding], true);
+            this.typedPlaceholderCache.set(encodingToLlvmType(this, placeholderEncoding, size*count).serialize(), typedPlaceholder);
         }.bind(this);
-        setupRuntimeValue(BasicBackend.symbolByName.Symbol, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Two);
-        setupRuntimeValue(BasicBackend.symbolByName.Boolean, BasicBackend.symbolByName.One, BasicBackend.symbolByName.BinaryNumber);
-        setupRuntimeValue(BasicBackend.symbolByName.Natural32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber);
-        setupRuntimeValue(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
-        setupRuntimeValue(BasicBackend.symbolByName.Float32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.IEEE754);
+        setupTypedPlaceholder(BasicBackend.symbolByName.Symbol, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Two);
+        setupTypedPlaceholder(BasicBackend.symbolByName.Boolean, BasicBackend.symbolByName.One, BasicBackend.symbolByName.BinaryNumber);
+        setupTypedPlaceholder(BasicBackend.symbolByName.Natural32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber);
+        setupTypedPlaceholder(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
+        setupTypedPlaceholder(BasicBackend.symbolByName.Float32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.IEEE754);
         this.llvmLookupMaps = {
             binaryArithmetic: new Map([
                 [BasicBackend.symbolByName.Addition, 'add'],
@@ -110,6 +110,7 @@ export class CompilerContext {
 
     createCarrier(destinationOperat, destinationOperandTag, sourceOperat, sourceOperandTag = false) {
         const carrier = this.ontology.createSymbol(this.programNamespaceId);
+        // this.ontology.setTriple([carrier, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Carrier], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperat, destinationOperat], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperandTag, destinationOperandTag], true);
         if(sourceOperandTag !== true && sourceOperandTag !== false) {
@@ -132,6 +133,7 @@ export class CompilerContext {
     createOperator(operationCount) {
         const operator = this.ontology.createSymbol(this.programNamespaceId),
               operations = [];
+        // this.ontology.setTriple([operator, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Operator], true);
         for(let i = 0; i < operationCount; ++i) {
             const operation = this.ontology.createSymbol(this.programNamespaceId);
             this.ontology.setTriple([operator, BasicBackend.symbolByName.Operation, operation], true);

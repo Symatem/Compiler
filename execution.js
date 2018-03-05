@@ -1,7 +1,7 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { encodingToLlvmType } from './values.js';
-import { linkOperandTriples, hashOfOperands, deferEvaluation, convertSources, getRuntimeValue, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, buildLLVMReturn, finishExecution } from './utils.js';
+import { bundleLLVMValues, linkOperandTriples, hashOfOperands, deferEvaluation, convertSources, getTypedPlaceholder, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -25,13 +25,13 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
     const inputL = entry.inputOperands.get(BasicBackend.symbolByName.InputL),
           inputR = entry.inputOperands.get(BasicBackend.symbolByName.InputR);
     if(entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputL) || entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputR)) {
-        const inputLlvmValueL = getRuntimeValue(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
-              inputLlvmValueR = getRuntimeValue(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
+        const inputLlvmValueL = getTypedPlaceholder(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+              inputLlvmValueR = getTypedPlaceholder(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
         if(inputLlvmValueL.type !== inputLlvmValueR.type)
             throw new Error('InputL and InputR type mismatch');
         const [outputSymbol, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
         entry.outputOperands.set(BasicBackend.symbolByName.Output, outputSymbol);
-        operation.result = new LLVMValue(encodingToLlvmType(context, context.ontology.getSolitary(outputSymbol, BasicBackend.symbolByName.RuntimeEncoding)));
+        operation.result = new LLVMValue(encodingToLlvmType(context, context.ontology.getSolitary(outputSymbol, BasicBackend.symbolByName.PlaceholderEncoding)));
         buildLLVMFunction(context, entry, operation.result.type);
         entry.aux.llvmBasicBlock.instructions = [
             operation,
@@ -74,7 +74,7 @@ function executePrimitiveIf(context, entry) {
             );
             if(!sourceLlvmValues)
                 return;
-            const [outputOperand, outputLlvmValue] = getRuntimeValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
+            const [outputOperand, outputLlvmValue] = getTypedPlaceholder(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
             if(instanceEntry.llvmFunction) {
                 entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(outputLlvmValue));
@@ -100,7 +100,7 @@ function executePrimitiveIf(context, entry) {
                 continue;
             label.instructions[0].attributes.push('alwaysinline');
             label.instructions.push(entry.aux.branchToExit);
-            const [outputOperand, outputLlvmValue] = getRuntimeValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
+            const [outputOperand, outputLlvmValue] = getTypedPlaceholder(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue;
             if(entry.aux.ready) {
                 if(entry.aux.phiInstruction.caseValues[0].type !== entry.aux.phiInstruction.caseValues[1].type)
@@ -115,7 +115,7 @@ function executePrimitiveIf(context, entry) {
                 new LLVMReturnInstruction(entry.aux.phiInstruction.result)
             ];
             entry.llvmFunction.basicBlocks[0].instructions = [new LLVMConditionalBranchInstruction(
-                getRuntimeValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+                getTypedPlaceholder(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
                 entry.aux.phiInstruction.caseLabels[0],
                 entry.aux.phiInstruction.caseLabels[1]
             )];
@@ -159,7 +159,9 @@ function executeCustomOperator(context, entry) {
             return;
         if(entry.aux.unsatisfiedOperations.size > 0)
             throw new Error('Operations are not a DAG, topological sort not possible');
-        buildLLVMFunction(context, entry, buildLLVMReturn(context, entry).type, false);
+        const returnLlvmValue = bundleLLVMValues(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
+        entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnLlvmValue));
+        buildLLVMFunction(context, entry, returnLlvmValue.type, false);
         finishExecution(context, entry);
     };
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
@@ -211,7 +213,7 @@ export function execute(context, inputOperands) {
         case BasicBackend.symbolByName.GreaterThan:
         case BasicBackend.symbolByName.GreaterEqual:
             executePrimitiveBinaryInstruction(context, entry, function(output, intputL, intputR) {
-                const encoding = context.ontology.getSolitary(context.ontology.getSolitary(output, BasicBackend.symbolByName.RuntimeEncoding), BasicBackend.symbolByName.Default),
+                const encoding = context.ontology.getSolitary(context.ontology.getSolitary(output, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default),
                       prefix = ((encoding === BasicBackend.symbolByName.BinaryNumber || encoding === BasicBackend.symbolByName.TwosComplement) &&
                                 (entry.operator === BasicBackend.symbolByName.Equal || entry.operator === BasicBackend.symbolByName.NotEqual))
                                 ? '' : context.llvmLookupMaps.binaryComparisonPrefix.get(encoding),
