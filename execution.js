@@ -1,7 +1,7 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { encodingToLlvmType } from './values.js';
-import { bundleLLVMValues, linkOperandTriples, hashOfOperands, deferEvaluation, convertSources, getTypedPlaceholder, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
+import { hashOfOperands, deferEvaluation, getTypedPlaceholder, convertSources, bundleOperands, bundleLLVMValues, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -183,7 +183,7 @@ export function execute(context, inputOperands) {
     entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
-    linkOperandTriples(context, entry, BasicBackend.symbolByName.InputOperands);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperands, bundleOperands(context, entry.inputOperands)], true);
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
     context.operatorInstanceByHash.set(entry.hash, entry);
     switch(entry.operator) {

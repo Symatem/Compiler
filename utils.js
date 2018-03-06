@@ -7,38 +7,6 @@ import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
 
-export function bundleLLVMValues(context, llvmBasicBlock, destinationLlvmValues) {
-    if(destinationLlvmValues.length < 2)
-        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
-    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
-    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
-        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
-        llvmBasicBlock.instructions.push(instruction);
-        sourceLlvmValue = instruction.result;
-    });
-    return sourceLlvmValue;
-}
-
-export function unbundleLLVMValues(context, llvmBasicBlock, sourceLlvmValues) {
-    if(sourceLlvmValues.length < 2)
-        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
-          destinationLlvmValue = new LLVMValue(dataType);
-    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
-        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
-    });
-    return destinationLlvmValue;
-}
-
-export function linkOperandTriples(context, entry, attribute) {
-    const operandsSymbol = context.ontology.createSymbol(context.executionNamespaceId),
-          operands = (attribute === BasicBackend.symbolByName.InputOperands) ? entry.inputOperands : entry.outputOperands;
-    for(const [operandTag, operand] of operands)
-        context.ontology.setTriple([operandsSymbol, operandTag, operand], true);
-    context.ontology.setTriple([entry.symbol, attribute, operandsSymbol], true);
-}
-
 export function hashOfOperands(context, operands) {
     let i = 0, dataLength = operands.size*32*5;
     for(const [operandTag, operand] of operands)
@@ -73,6 +41,13 @@ export function deferEvaluation(context, sourceOperand) {
     return [sourceOperand, sourceLlvmValue];
 }
 
+export function getTypedPlaceholder(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
+    const sourceOperand = sourceOperands.get(sourceOperandTag);
+    return (sourceLlvmValues.has(sourceOperandTag))
+        ? [sourceOperand, sourceLlvmValues.get(sourceOperandTag)]
+        : deferEvaluation(context, sourceOperand);
+}
+
 export function convertSources(context, sourceOperands) {
     const sourceLlvmValues = new Map();
     for(const [sourceOperandTag, sourceOperand] of sourceOperands)
@@ -83,11 +58,44 @@ export function convertSources(context, sourceOperands) {
     return sourceLlvmValues;
 }
 
-export function getTypedPlaceholder(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
-    const sourceOperand = sourceOperands.get(sourceOperandTag);
-    return (sourceLlvmValues.has(sourceOperandTag))
-        ? [sourceOperand, sourceLlvmValues.get(sourceOperandTag)]
-        : deferEvaluation(context, sourceOperand);
+export function bundleOperands(context, operands) {
+    const bundleSymbol = context.ontology.createSymbol(context.executionNamespaceId);
+    context.ontology.setTriple([bundleSymbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.CarrierBundle], true);
+    for(const [operandTag, operand] of operands)
+        context.ontology.setTriple([bundleSymbol, operandTag, operand], true);
+    return bundleSymbol;
+}
+
+export function unbundleOperands(context, bundleSymbol) {
+    const operands = new Map();
+    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MVV, [bundleSymbol, BasicBackend.symbolByName.Void, BasicBackend.symbolByName.Void]))
+        operands.set(triple[1], triple[2]);
+    operands.delete(BasicBackend.symbolByName.Type);
+    return operands;
+}
+
+export function bundleLLVMValues(context, llvmBasicBlock, destinationLlvmValues) {
+    if(destinationLlvmValues.length < 2)
+        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
+    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
+    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
+        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
+        llvmBasicBlock.instructions.push(instruction);
+        sourceLlvmValue = instruction.result;
+    });
+    return sourceLlvmValue;
+}
+
+export function unbundleLLVMValues(context, llvmBasicBlock, sourceLlvmValues) {
+    if(sourceLlvmValues.length < 2)
+        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
+          destinationLlvmValue = new LLVMValue(dataType);
+    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
+        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
+    });
+    return destinationLlvmValue;
 }
 
 export function collectDestinations(context, entry, destinationOperat) {
@@ -189,7 +197,7 @@ export function finishExecution(context, entry) {
         context.llvmModule.functions.push(entry.llvmFunction);
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
-    linkOperandTriples(context, entry, BasicBackend.symbolByName.OutputOperands);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperands, bundleOperands(context, entry.outputOperands)], true);
     if(operationsBlockedByThis)
         for(const [blockedEntry, operations] of operationsBlockedByThis) {
             for(const operation of operations) {
