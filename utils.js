@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, encodingToLlvmType, constantToLlvmConstant } from './values.js';
+import { LLVMVoidConstant, convertSources } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -25,37 +25,6 @@ export function hashOfOperands(context, operands) {
         i += operandDataBytes.byteLength;
     }
     return view.djb2Hash();
-}
-
-export function deferEvaluation(context, sourceOperand) {
-    const sourceLlvmValue = constantToLlvmConstant(context, sourceOperand),
-          sourceLlvmType = sourceLlvmValue.type.serialize();
-    sourceOperand = context.typedPlaceholderCache.get(sourceLlvmType);
-    if(!sourceOperand) {
-        const placeholderEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
-        sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
-        context.typedPlaceholderCache.set(sourceLlvmType, sourceOperand);
-    }
-    return [sourceOperand, sourceLlvmValue];
-}
-
-export function getTypedPlaceholder(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
-    const sourceOperand = sourceOperands.get(sourceOperandTag);
-    return (sourceLlvmValues.has(sourceOperandTag))
-        ? [sourceOperand, sourceLlvmValues.get(sourceOperandTag)]
-        : deferEvaluation(context, sourceOperand);
-}
-
-export function convertSources(context, sourceOperands) {
-    const sourceLlvmValues = new Map();
-    for(const [sourceOperandTag, sourceOperand] of sourceOperands)
-        if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder])) {
-            const llvmType = encodingToLlvmType(context, context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding));
-            sourceLlvmValues.set(sourceOperandTag, new LLVMValue(llvmType));
-        }
-    return sourceLlvmValues;
 }
 
 export function bundleOperands(context, operands) {

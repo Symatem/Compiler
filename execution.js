@@ -1,16 +1,13 @@
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
-import { encodingToLlvmType } from './values.js';
-import { hashOfOperands, deferEvaluation, getTypedPlaceholder, convertSources, bundleOperands, bundleLLVMValues, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
+import { convertSources, getLlvmValue } from './values.js';
+import { hashOfOperands, bundleOperands, bundleLLVMValues, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
 
 function executePrimitiveDeferEvaluation(context, entry) {
-    let outputOperand = entry.inputOperands.get(BasicBackend.symbolByName.Input),
-        outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
-    if(!outputLlvmValue)
-        [outputOperand, outputLlvmValue] = deferEvaluation(context, outputOperand);
+    const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
     entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
     entry.aux.llvmBasicBlock.instructions = [
@@ -25,13 +22,14 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
     const inputL = entry.inputOperands.get(BasicBackend.symbolByName.InputL),
           inputR = entry.inputOperands.get(BasicBackend.symbolByName.InputR);
     if(entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputL) || entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputR)) {
-        const inputLlvmValueL = getTypedPlaceholder(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
-              inputLlvmValueR = getTypedPlaceholder(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
+        const inputLlvmValueL = getLlvmValue(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+              inputLlvmValueR = getLlvmValue(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
         if(inputLlvmValueL.type !== inputLlvmValueR.type)
             throw new Error('InputL and InputR type mismatch');
-        const [outputSymbol, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
-        entry.outputOperands.set(BasicBackend.symbolByName.Output, outputSymbol);
-        operation.result = new LLVMValue(encodingToLlvmType(context, context.ontology.getSolitary(outputSymbol, BasicBackend.symbolByName.PlaceholderEncoding)));
+        const [outputOperand, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
+        entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+        entry.aux.outputLlvmValues = convertSources(context, entry.outputOperands);
+        operation.result = entry.aux.outputLlvmValues.get(BasicBackend.symbolByName.Output);
         buildLLVMFunction(context, entry, operation.result.type);
         entry.aux.llvmBasicBlock.instructions = [
             operation,
@@ -39,9 +37,9 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
         ];
     } else {
         const output = interpretCallback(context.ontology.getData(inputL), context.ontology.getData(inputR)),
-              outputSymbol = context.ontology.createSymbol(context.executionNamespaceId);
-        context.ontology.setData(outputSymbol, output);
-        entry.outputOperands.set(BasicBackend.symbolByName.Output, outputSymbol);
+              outputOperand = context.ontology.createSymbol(context.executionNamespaceId);
+        context.ontology.setData(outputOperand, output);
+        entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
     }
     finishExecution(context, entry);
 }
@@ -74,7 +72,7 @@ function executePrimitiveIf(context, entry) {
             );
             if(!sourceLlvmValues)
                 return;
-            const [outputOperand, outputLlvmValue] = getTypedPlaceholder(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
+            const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
             if(instanceEntry.llvmFunction) {
                 entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(outputLlvmValue));
@@ -100,7 +98,7 @@ function executePrimitiveIf(context, entry) {
                 continue;
             label.instructions[0].attributes.push('alwaysinline');
             label.instructions.push(entry.aux.branchToExit);
-            const [outputOperand, outputLlvmValue] = getTypedPlaceholder(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
+            const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue;
             if(entry.aux.ready) {
                 if(entry.aux.phiInstruction.caseValues[0].type !== entry.aux.phiInstruction.caseValues[1].type)
@@ -115,7 +113,7 @@ function executePrimitiveIf(context, entry) {
                 new LLVMReturnInstruction(entry.aux.phiInstruction.result)
             ];
             entry.llvmFunction.basicBlocks[0].instructions = [new LLVMConditionalBranchInstruction(
-                getTypedPlaceholder(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+                getLlvmValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
                 entry.aux.phiInstruction.caseLabels[0],
                 entry.aux.phiInstruction.caseLabels[1]
             )];

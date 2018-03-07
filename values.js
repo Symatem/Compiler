@@ -12,7 +12,7 @@ export function encodingToLlvmType(context, encoding, length) {
     if(Number.isInteger(length) && length >= 0)
         switch(encoding) {
             case BasicBackend.symbolByName.Void:
-                return new LLVMType('void');
+                return LLVMVoidConstant.type;
             case BasicBackend.symbolByName.BinaryNumber:
             case BasicBackend.symbolByName.TwosComplement:
                 return new LLVMIntegerType(length);
@@ -59,6 +59,25 @@ export function encodingToLlvmType(context, encoding, length) {
            : new LLVMStructureType(childDataTypes, true);
 }
 
+function operandToLlvmType(context, operand) {
+    switch(context.ontology.getSolitary(operand, BasicBackend.symbolByName.Type)) {
+        case BasicBackend.symbolByName.TypedPlaceholder:
+            return encodingToLlvmType(context, context.ontology.getSolitary(operand, BasicBackend.symbolByName.PlaceholderEncoding));
+        default:
+            return;
+    }
+}
+
+export function convertSources(context, sourceOperands) {
+    const sourceLlvmValues = new Map();
+    for(const [sourceOperandTag, sourceOperand] of sourceOperands) {
+        const llvmType = operandToLlvmType(context, sourceOperand);
+        if(llvmType)
+            sourceLlvmValues.set(sourceOperandTag, new LLVMValue(llvmType));
+    }
+    return sourceLlvmValues;
+}
+
 function dataValueToLlvmConstant(dataType, dataValue) {
     if(typeof dataValue === 'string')
         return new LLVMTextConstant(dataType, dataValue);
@@ -70,14 +89,33 @@ function dataValueToLlvmConstant(dataType, dataValue) {
     return new LLVMLiteralConstant(dataType, dataValue);
 }
 
-export function constantToLlvmConstant(context, symbol) {
-    if(context.operatorInstanceBySymbol.has(symbol))
-        return context.operatorInstanceBySymbol.get(symbol).llvmFunction;
-    const encoding = context.ontology.getSolitary(symbol, BasicBackend.symbolByName.Encoding),
-          length = context.ontology.getLength(symbol);
+function operandToLlvmConstant(context, operand) {
+    if(context.operatorInstanceBySymbol.has(operand))
+        return context.operatorInstanceBySymbol.get(operand).llvmFunction;
+    if(context.ontology.getTriple([operand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
+        return new LLVMLiteralConstant(operandToLlvmType(context, operand));
+    const encoding = context.ontology.getSolitary(operand, BasicBackend.symbolByName.Encoding),
+          length = context.ontology.getLength(operand);
     if(encoding === BasicBackend.symbolByName.Void && length === 0)
-        return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(symbol)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(symbol))]);
+        return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(operand)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(operand))]);
     const dataType = encodingToLlvmType(context, encoding, length),
-          dataValue = context.ontology.getData(symbol);
+          dataValue = context.ontology.getData(operand);
     return dataValueToLlvmConstant(dataType, dataValue);
+}
+
+export function getLlvmValue(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
+    let sourceOperand = sourceOperands.get(sourceOperandTag);
+    if(sourceLlvmValues.has(sourceOperandTag))
+        return [sourceOperand, sourceLlvmValues.get(sourceOperandTag)];
+    const sourceLlvmValue = operandToLlvmConstant(context, sourceOperand),
+          sourceLlvmType = sourceLlvmValue.type.serialize();
+    sourceOperand = context.typedPlaceholderCache.get(sourceLlvmType);
+    if(!sourceOperand) {
+        const placeholderEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
+        sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
+        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
+        context.typedPlaceholderCache.set(sourceLlvmType, sourceOperand);
+    }
+    return [sourceOperand, sourceLlvmValue];
 }
