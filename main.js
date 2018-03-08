@@ -19,9 +19,9 @@ export class CompilerContext {
         this.programNamespaceId =
         this.compilerNamespaceId = this.ontology.registerAdditionalSymbols('Compiler', [
             'Operator',
+            'OperatorInstance',
             'Operation',
-            // 'Operand',
-            // 'Carrier',
+            'Carrier',
             'CarrierBundle',
             'Constant',
             'InputOperands',
@@ -111,7 +111,7 @@ export class CompilerContext {
 
     createCarrier(destinationOperat, destinationOperandTag, sourceOperat, sourceOperandTag = false) {
         const carrier = this.ontology.createSymbol(this.programNamespaceId);
-        // this.ontology.setTriple([carrier, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Carrier], true);
+        this.ontology.setTriple([carrier, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Carrier], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperat, destinationOperat], true);
         this.ontology.setTriple([carrier, BasicBackend.symbolByName.DestinationOperandTag, destinationOperandTag], true);
         if(sourceOperandTag !== true && sourceOperandTag !== false) {
@@ -134,7 +134,7 @@ export class CompilerContext {
     createOperator(operationCount) {
         const operator = this.ontology.createSymbol(this.programNamespaceId),
               operations = [];
-        // this.ontology.setTriple([operator, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Operator], true);
+        this.ontology.setTriple([operator, BasicBackend.symbolByName.Type,  BasicBackend.symbolByName.Operator], true);
         for(let i = 0; i < operationCount; ++i) {
             const operation = this.ontology.createSymbol(this.programNamespaceId);
             this.ontology.setTriple([operator, BasicBackend.symbolByName.Operation, operation], true);

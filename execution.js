@@ -1,6 +1,7 @@
+import { LLVMIntegerType } from './LLVM/Type.js';
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
-import { convertSources, getLlvmValue } from './values.js';
+import { operandsToLlvmValues, getLlvmValue } from './values.js';
 import { hashOfOperands, bundleOperands, bundleLLVMValues, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -10,10 +11,7 @@ function executePrimitiveDeferEvaluation(context, entry) {
     const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
     entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
     entry.aux.llvmBasicBlock = new LLVMBasicBlock();
-    entry.aux.llvmBasicBlock.instructions = [
-        new LLVMReturnInstruction(outputLlvmValue)
-    ];
-    buildLLVMFunction(context, entry, outputLlvmValue.type);
+    buildLLVMFunction(context, entry, outputLlvmValue);
     finishExecution(context, entry);
 }
 
@@ -28,13 +26,8 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
             throw new Error('InputL and InputR type mismatch');
         const [outputOperand, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
         entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
-        entry.aux.outputLlvmValues = convertSources(context, entry.outputOperands);
-        operation.result = entry.aux.outputLlvmValues.get(BasicBackend.symbolByName.Output);
-        buildLLVMFunction(context, entry, operation.result.type);
-        entry.aux.llvmBasicBlock.instructions = [
-            operation,
-            new LLVMReturnInstruction(operation.result)
-        ];
+        entry.aux.llvmBasicBlock.instructions = [operation];
+        buildLLVMFunction(context, entry, operation.result);
     } else {
         const output = interpretCallback(context.ontology.getData(inputL), context.ontology.getData(inputR)),
               outputOperand = context.ontology.createSymbol(context.executionNamespaceId);
@@ -74,10 +67,8 @@ function executePrimitiveIf(context, entry) {
                 return;
             const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
-            if(instanceEntry.llvmFunction) {
-                entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(outputLlvmValue));
-                buildLLVMFunction(context, entry, outputLlvmValue.type);
-            }
+            if(instanceEntry.llvmFunction)
+                buildLLVMFunction(context, entry, outputLlvmValue);
             finishExecution(context, entry);
         };
         entry.aux.resume();
@@ -106,12 +97,9 @@ function executePrimitiveIf(context, entry) {
                 continue;
             }
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
-            buildLLVMFunction(context, entry, outputLlvmValue.type);
             entry.aux.phiInstruction.result = new LLVMValue(outputLlvmValue.type);
-            entry.aux.branchToExit.destinationLabel.instructions = [
-                entry.aux.phiInstruction,
-                new LLVMReturnInstruction(entry.aux.phiInstruction.result)
-            ];
+            entry.aux.branchToExit.destinationLabel.instructions = [entry.aux.phiInstruction];
+            buildLLVMFunction(context, entry, entry.aux.phiInstruction.result);
             entry.llvmFunction.basicBlocks[0].instructions = [new LLVMConditionalBranchInstruction(
                 getLlvmValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
                 entry.aux.phiInstruction.caseLabels[0],
@@ -158,8 +146,7 @@ function executeCustomOperator(context, entry) {
         if(entry.aux.unsatisfiedOperations.size > 0)
             throw new Error('Operations are not a DAG, topological sort not possible');
         const returnLlvmValue = bundleLLVMValues(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
-        entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnLlvmValue));
-        buildLLVMFunction(context, entry, returnLlvmValue.type, false);
+        buildLLVMFunction(context, entry, returnLlvmValue, false);
         finishExecution(context, entry);
     };
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
@@ -178,8 +165,9 @@ export function execute(context, inputOperands) {
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
     entry.outputOperands = new Map();
-    entry.aux = {'inputLlvmValues': convertSources(context, entry.inputOperands)};
+    entry.aux = {'inputLlvmValues': operandsToLlvmValues(context, entry.inputOperands)};
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperatorInstance], true);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperands, bundleOperands(context, entry.inputOperands)], true);
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
@@ -192,7 +180,10 @@ export function execute(context, inputOperands) {
         case BasicBackend.symbolByName.Subtraction:
         case BasicBackend.symbolByName.Multiplication:
             executePrimitiveBinaryInstruction(context, entry, function(output, intputL, intputR) {
-                return [output, new LLVMBinaryInstruction(undefined, context.llvmLookupMaps.binaryArithmetic.get(entry.operator), intputL, intputR)];
+                return [
+                    output,
+                    new LLVMBinaryInstruction(new LLVMValue(intputL.type), context.llvmLookupMaps.binaryArithmetic.get(entry.operator), intputL, intputR)
+                ];
             }, function(intputL, intputR) {
                 switch(entry.operator) {
                     case BasicBackend.symbolByName.Addition:
@@ -214,9 +205,11 @@ export function execute(context, inputOperands) {
                 const encoding = context.ontology.getSolitary(context.ontology.getSolitary(output, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default),
                       prefix = ((encoding === BasicBackend.symbolByName.BinaryNumber || encoding === BasicBackend.symbolByName.TwosComplement) &&
                                 (entry.operator === BasicBackend.symbolByName.Equal || entry.operator === BasicBackend.symbolByName.NotEqual))
-                                ? '' : context.llvmLookupMaps.binaryComparisonPrefix.get(encoding),
-                      operation = new LLVMCompareInstruction(undefined, prefix+context.llvmLookupMaps.binaryComparison.get(entry.operator), intputL, intputR);
-                return [BasicBackend.symbolByName.Boolean, operation];
+                                ? '' : context.llvmLookupMaps.binaryComparisonPrefix.get(encoding);
+                return [
+                    BasicBackend.symbolByName.Boolean,
+                    new LLVMCompareInstruction(new LLVMValue(new LLVMIntegerType(1)), prefix+context.llvmLookupMaps.binaryComparison.get(entry.operator), intputL, intputR)
+                ];
             }, function(intputL, intputR) {
                 switch(entry.operator) {
                     case BasicBackend.symbolByName.Equal:

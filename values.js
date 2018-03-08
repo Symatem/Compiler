@@ -1,5 +1,5 @@
 import { LLVMType, LLVMIntegerType, LLVMFloatType, LLVMPointerType, LLVMCompositeType, LLVMVectorType, LLVMArrayType, LLVMStructureType } from './LLVM/Type.js';
-import { LLVMValue, LLVMLiteralConstant, LLVMTextConstant, LLVMCompositeConstant } from './LLVM/Value.js';
+import { LLVMValue, LLVMConstant, LLVMLiteralConstant, LLVMTextConstant, LLVMCompositeConstant } from './LLVM/Value.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -59,24 +59,7 @@ export function encodingToLlvmType(context, encoding, length) {
            : new LLVMStructureType(childDataTypes, true);
 }
 
-function operandToLlvmType(context, operand) {
-    switch(context.ontology.getSolitary(operand, BasicBackend.symbolByName.Type)) {
-        case BasicBackend.symbolByName.TypedPlaceholder:
-            return encodingToLlvmType(context, context.ontology.getSolitary(operand, BasicBackend.symbolByName.PlaceholderEncoding));
-        default:
-            return;
-    }
-}
 
-export function convertSources(context, sourceOperands) {
-    const sourceLlvmValues = new Map();
-    for(const [sourceOperandTag, sourceOperand] of sourceOperands) {
-        const llvmType = operandToLlvmType(context, sourceOperand);
-        if(llvmType)
-            sourceLlvmValues.set(sourceOperandTag, new LLVMValue(llvmType));
-    }
-    return sourceLlvmValues;
-}
 
 function dataValueToLlvmConstant(dataType, dataValue) {
     if(typeof dataValue === 'string')
@@ -89,29 +72,85 @@ function dataValueToLlvmConstant(dataType, dataValue) {
     return new LLVMLiteralConstant(dataType, dataValue);
 }
 
-function operandToLlvmConstant(context, operand) {
-    if(context.operatorInstanceBySymbol.has(operand))
-        return context.operatorInstanceBySymbol.get(operand).llvmFunction;
-    if(context.ontology.getTriple([operand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
-        return new LLVMLiteralConstant(operandToLlvmType(context, operand));
-    const encoding = context.ontology.getSolitary(operand, BasicBackend.symbolByName.Encoding),
-          length = context.ontology.getLength(operand);
-    if(encoding === BasicBackend.symbolByName.Void && length === 0)
-        return new LLVMCompositeConstant(LLVMSymbolType, [new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(operand)), new LLVMLiteralConstant(BasicBackend.identityOfSymbol(operand))]);
-    const dataType = encodingToLlvmType(context, encoding, length),
-          dataValue = context.ontology.getData(operand);
-    return dataValueToLlvmConstant(dataType, dataValue);
+function operandToLlvm(context, operand, mode) {
+    switch(context.ontology.getSolitary(operand, BasicBackend.symbolByName.Type)) {
+        case BasicBackend.symbolByName.OperatorInstance: {
+            if(mode === LLVMValue)
+                return;
+            const llvmConstant = context.operatorInstanceBySymbol.get(operand).llvmFunction;
+            return (mode === LLVMType) ? llvmConstant.type : llvmConstant;
+        }
+        case BasicBackend.symbolByName.TypedPlaceholder: {
+            const llvmType = encodingToLlvmType(context, context.ontology.getSolitary(operand, BasicBackend.symbolByName.PlaceholderEncoding));
+            switch(mode) {
+                case LLVMType:
+                    return llvmType;
+                case LLVMValue:
+                    return new LLVMValue(llvmType);
+                case LLVMConstant:
+                    return new LLVMLiteralConstant(llvmType);
+            }
+        }
+        case BasicBackend.symbolByName.CarrierBundle: {
+            const results = Array.from(unbundleOperands(context, operand).values()).map(operand => operandToLlvm(context, operand, mode)).filter(result => result);
+            switch(results.length) {
+                case 0:
+                    switch(mode) {
+                        case LLVMType:
+                            return LLVMVoidConstant.type;
+                        case LLVMValue:
+                            return;
+                        case LLVMConstant:
+                            return LLVMVoidConstant;
+                    }
+                case 1:
+                    return results[0];
+                default:
+                    switch(mode) {
+                        case LLVMType:
+                            return new LLVMStructureType(results);
+                        case LLVMValue:
+                            return new LLVMValue(new LLVMStructureType(results.map(llvmValue => llvmValue.type)));
+                        case LLVMConstant:
+                            return new LLVMCompositeConstant(new LLVMStructureType(results.map(llvmValue => llvmValue.type)), results);
+                    }
+            }
+        } default: {
+            if(mode === LLVMValue)
+                return;
+            const encoding = context.ontology.getSolitary(operand, BasicBackend.symbolByName.Encoding),
+                  length = context.ontology.getLength(operand);
+            if(encoding === BasicBackend.symbolByName.Void && length === 0)
+                return new LLVMCompositeConstant(LLVMSymbolType, [
+                    new LLVMLiteralConstant(BasicBackend.namespaceOfSymbol(operand)),
+                    new LLVMLiteralConstant(BasicBackend.identityOfSymbol(operand))
+                ]);
+            const dataType = encodingToLlvmType(context, encoding, length);
+            return (mode === LLVMType) ? dataType : dataValueToLlvmConstant(dataType, context.ontology.getData(operand));
+        }
+    }
+}
+
+
+
+export function operandsToLlvmValues(context, sourceOperands) {
+    const sourceLlvmValues = new Map();
+    for(const [sourceOperandTag, sourceOperand] of sourceOperands) {
+        const llvmValue = operandToLlvm(context, sourceOperand, LLVMValue);
+        if(llvmValue)
+            sourceLlvmValues.set(sourceOperandTag, llvmValue);
+    }
+    return sourceLlvmValues;
 }
 
 export function getLlvmValue(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
     let sourceOperand = sourceOperands.get(sourceOperandTag);
     if(sourceLlvmValues.has(sourceOperandTag))
         return [sourceOperand, sourceLlvmValues.get(sourceOperandTag)];
-    const sourceLlvmValue = operandToLlvmConstant(context, sourceOperand),
+    const sourceLlvmValue = operandToLlvm(context, sourceOperand, LLVMConstant),
           sourceLlvmType = sourceLlvmValue.type.serialize();
     sourceOperand = context.typedPlaceholderCache.get(sourceLlvmType);
     if(!sourceOperand) {
-        const placeholderEncoding = context.ontology.getSolitary(sourceOperand, BasicBackend.symbolByName.Encoding);
         sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
         context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
         context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);

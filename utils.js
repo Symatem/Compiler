@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
-import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, convertSources } from './values.js';
+import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
+import { LLVMVoidConstant, operandsToLlvmValues } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -146,7 +146,7 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destina
         }
         if(!instanceEntry.llvmFunction)
             return [instanceEntry, new Map()];
-        sourceLlvmValues = convertSources(context, instanceEntry.outputOperands);
+        sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands);
     }
     const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
     llvmBasicBlock.instructions.push(callInstruction);
@@ -154,8 +154,9 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destina
     return [instanceEntry, sourceLlvmValues];
 }
 
-export function buildLLVMFunction(context, entry, returnType, alwaysinline=true) {
-    entry.llvmFunction = new LLVMFunction(`"${entry.symbol}"`, returnType, Array.from(entry.aux.inputLlvmValues.values()), [entry.aux.llvmBasicBlock]);
+export function buildLLVMFunction(context, entry, returnValue, alwaysinline=true) {
+    entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnValue));
+    entry.llvmFunction = new LLVMFunction(`"${entry.symbol}"`, returnValue.type, Array.from(entry.aux.inputLlvmValues.values()), [entry.aux.llvmBasicBlock]);
     if(alwaysinline)
         entry.llvmFunction.attributes.push('alwaysinline');
     entry.llvmFunction.linkage = 'private';
