@@ -7,6 +7,22 @@ import BasicBackend from '../SymatemJS/BasicBackend.js';
 export const LLVMSymbolType = new LLVMStructureType([new LLVMIntegerType(32), new LLVMIntegerType(32)]),
              LLVMVoidConstant = new LLVMLiteralConstant(new LLVMType('void'));
 
+export function bundleOperands(context, operands) {
+    const bundleSymbol = context.ontology.createSymbol(context.executionNamespaceId);
+    context.ontology.setTriple([bundleSymbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.CarrierBundle], true);
+    for(const [operandTag, operand] of operands)
+        context.ontology.setTriple([bundleSymbol, operandTag, operand], true);
+    return bundleSymbol;
+}
+
+export function unbundleOperands(context, bundleSymbol) {
+    const operands = new Map();
+    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MVV, [bundleSymbol, BasicBackend.symbolByName.Void, BasicBackend.symbolByName.Void]))
+        operands.set(triple[1], triple[2]);
+    operands.delete(BasicBackend.symbolByName.Type);
+    return operands;
+}
+
 export function encodingToLlvmType(context, encoding, length) {
     // TODO: LLVMFunctionType
     if(Number.isInteger(length) && length >= 0)
@@ -59,8 +75,6 @@ export function encodingToLlvmType(context, encoding, length) {
            : new LLVMStructureType(childDataTypes, true);
 }
 
-
-
 function dataValueToLlvmConstant(dataType, dataValue) {
     if(typeof dataValue === 'string')
         return new LLVMTextConstant(dataType, dataValue);
@@ -92,7 +106,9 @@ function operandToLlvm(context, operand, mode) {
             }
         }
         case BasicBackend.symbolByName.CarrierBundle: {
-            const results = Array.from(unbundleOperands(context, operand).values()).map(operand => operandToLlvm(context, operand, mode)).filter(result => result);
+            const results = Array.from(unbundleOperands(context, operand).values())
+                .map(operand => operandToLlvm(context, operand, mode))
+                .filter(result => result && result !== LLVMVoidConstant && result.type !== LLVMVoidConstant);
             switch(results.length) {
                 case 0:
                     switch(mode) {
@@ -105,15 +121,12 @@ function operandToLlvm(context, operand, mode) {
                     }
                 case 1:
                     return results[0];
-                default:
-                    switch(mode) {
-                        case LLVMType:
-                            return new LLVMStructureType(results);
-                        case LLVMValue:
-                            return new LLVMValue(new LLVMStructureType(results.map(llvmValue => llvmValue.type)));
-                        case LLVMConstant:
-                            return new LLVMCompositeConstant(new LLVMStructureType(results.map(llvmValue => llvmValue.type)), results);
-                    }
+                default: {
+                    if(mode === LLVMType)
+                        return new LLVMStructureType(results);
+                    const llymType = new LLVMStructureType(results.map(llvmValue => llvmValue.type));
+                    return (mode === LLVMValue) ? new LLVMValue(llymType) : new LLVMCompositeConstant(llymType, results);
+                }
             }
         } default: {
             if(mode === LLVMValue)
@@ -131,7 +144,35 @@ function operandToLlvm(context, operand, mode) {
     }
 }
 
+function convertToTypedPlaceholder(context, operand, llvmType) {
+    const llvmTypeString = llvmType.serialize();
+    if(context.typedPlaceholderCache.has(llvmTypeString))
+        return context.typedPlaceholderCache.get(llvmTypeString);
+    if(context.ontology.getTriple([operand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.CarrierBundle])) {
+        const operands = unbundleOperands(context, operand);
+        if(operands.size > 1) {
+            let index = 0;
+            for(const [operandTag, operand] of operands)
+                operands.set(operandTag, convertToTypedPlaceholder(context, operand, llvmType.referencedTypes[index++]));
+        } else if(operands.size === 1)
+            operands.set(operands.keys().next().value, convertToTypedPlaceholder(context, operands.values().next().value, llvmType));
+        return bundleOperands(context, operands);
+    }
+    const placeholderEncoding = context.ontology.getSolitary(operand, BasicBackend.symbolByName.Encoding);
+    operand = context.ontology.createSymbol(context.executionNamespaceId);
+    context.ontology.setTriple([operand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
+    context.ontology.setTriple([operand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
+    context.typedPlaceholderCache.set(sourceLlvmType, operand);
+    return operand;
+}
 
+export function getLlvmValue(context, operandTag, operands, llvmValues) {
+    const operand = operands.get(operandTag);
+    if(llvmValues.has(operandTag))
+        return [operand, llvmValues.get(operandTag)];
+    const llvmValue = operandToLlvm(context, operand, LLVMConstant);
+    return [convertToTypedPlaceholder(context, operand, llvmValue.type), llvmValue];
+}
 
 export function operandsToLlvmValues(context, sourceOperands) {
     const sourceLlvmValues = new Map();
@@ -141,20 +182,4 @@ export function operandsToLlvmValues(context, sourceOperands) {
             sourceLlvmValues.set(sourceOperandTag, llvmValue);
     }
     return sourceLlvmValues;
-}
-
-export function getLlvmValue(context, sourceOperandTag, sourceOperands, sourceLlvmValues) {
-    let sourceOperand = sourceOperands.get(sourceOperandTag);
-    if(sourceLlvmValues.has(sourceOperandTag))
-        return [sourceOperand, sourceLlvmValues.get(sourceOperandTag)];
-    const sourceLlvmValue = operandToLlvm(context, sourceOperand, LLVMConstant),
-          sourceLlvmType = sourceLlvmValue.type.serialize();
-    sourceOperand = context.typedPlaceholderCache.get(sourceLlvmType);
-    if(!sourceOperand) {
-        sourceOperand = context.ontology.createSymbol(context.executionNamespaceId);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
-        context.ontology.setTriple([sourceOperand, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
-        context.typedPlaceholderCache.set(sourceLlvmType, sourceOperand);
-    }
-    return [sourceOperand, sourceLlvmValue];
 }

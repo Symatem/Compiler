@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, operandsToLlvmValues } from './values.js';
+import { LLVMVoidConstant, bundleOperands, operandsToLlvmValues } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -25,22 +25,6 @@ export function hashOfOperands(context, operands) {
         i += operandDataBytes.byteLength;
     }
     return view.djb2Hash();
-}
-
-export function bundleOperands(context, operands) {
-    const bundleSymbol = context.ontology.createSymbol(context.executionNamespaceId);
-    context.ontology.setTriple([bundleSymbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.CarrierBundle], true);
-    for(const [operandTag, operand] of operands)
-        context.ontology.setTriple([bundleSymbol, operandTag, operand], true);
-    return bundleSymbol;
-}
-
-export function unbundleOperands(context, bundleSymbol) {
-    const operands = new Map();
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MVV, [bundleSymbol, BasicBackend.symbolByName.Void, BasicBackend.symbolByName.Void]))
-        operands.set(triple[1], triple[2]);
-    operands.delete(BasicBackend.symbolByName.Type);
-    return operands;
 }
 
 export function bundleLLVMValues(context, llvmBasicBlock, destinationLlvmValues) {
