@@ -27,30 +27,6 @@ export function hashOfOperands(context, operands) {
     return view.djb2Hash();
 }
 
-export function bundleLLVMValues(context, llvmBasicBlock, destinationLlvmValues) {
-    if(destinationLlvmValues.length < 2)
-        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
-    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
-    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
-        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
-        llvmBasicBlock.instructions.push(instruction);
-        sourceLlvmValue = instruction.result;
-    });
-    return sourceLlvmValue;
-}
-
-export function unbundleLLVMValues(context, llvmBasicBlock, sourceLlvmValues) {
-    if(sourceLlvmValues.length < 2)
-        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
-          destinationLlvmValue = new LLVMValue(dataType);
-    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
-        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
-    });
-    return destinationLlvmValue;
-}
-
 export function collectDestinations(context, entry, destinationOperat) {
     let carriers = new Map(),
         referenceCount = 0;
@@ -89,11 +65,19 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
               sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
         if(sourceOperandTag === BasicBackend.symbolByName.Constant)
             continue;
-        const sourceOperand = sourceOperands.get(sourceOperandTag),
-              sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
+        let sourceOperand = sourceOperands.get(sourceOperandTag);
+        const sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
               destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
               destinationOperat = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperat),
               destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
+        if(sourceOperand && sourceLlvmValue)
+            destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);
+        else
+            destinationLlvmValues.delete(destinationOperandTag);
+        if(!sourceOperand) {
+            sourceOperand = BasicBackend.symbolByName.Void;
+            console.warn('Propagating Void Operand as fallback');
+        }
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
         if(sourceLlvmValue)
             destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);
@@ -110,7 +94,31 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
     }
 }
 
-export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destinationOperands, destinationLlvmValues) {
+export function buildLlvmBundle(context, llvmBasicBlock, destinationLlvmValues) {
+    if(destinationLlvmValues.length < 2)
+        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
+    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
+    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
+        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
+        llvmBasicBlock.instructions.push(instruction);
+        sourceLlvmValue = instruction.result;
+    });
+    return sourceLlvmValue;
+}
+
+export function buildLlvmUnbundle(context, llvmBasicBlock, sourceLlvmValues) {
+    if(sourceLlvmValues.length < 2)
+        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
+          destinationLlvmValue = new LLVMValue(dataType);
+    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
+        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
+    });
+    return destinationLlvmValue;
+}
+
+export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
     let instanceEntry, sourceLlvmValues;
     if(destinationLlvmValues.has(BasicBackend.symbolByName.Operator)) {
         throw new Error('Calling LLVMFunctionType is not implemented yet');
@@ -134,7 +142,7 @@ export function buildLlvmCall(context, entry, operation, llvmBasicBlock, destina
     }
     const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
     llvmBasicBlock.instructions.push(callInstruction);
-    callInstruction.result = unbundleLLVMValues(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
+    callInstruction.result = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
     return [instanceEntry, sourceLlvmValues];
 }
 

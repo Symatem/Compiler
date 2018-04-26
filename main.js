@@ -50,6 +50,8 @@ export class CompilerContext {
             'Output',
 
             'DeferEvaluation',
+            'Bundle',
+            'Unbundle',
             'Addition',
             'Subtraction',
             'Multiplication',
