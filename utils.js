@@ -59,15 +59,19 @@ export function collectDestinations(context, entry, destinationOperat) {
         entry.aux.unsatisfiedOperations.set(destinationOperat, referenceCount);
 }
 
-export function propagateSources(context, entry, sourceOperat, sourceOperands, sourceLlvmValues) {
+export function propagateSources(context, entry, sourceOperat, sourceOperands, sourceLlvmValues, sourceOperandBundle, sourceLlvmValueBundle) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.SourceOperat, sourceOperat])) {
         const carrier = triple[0],
               sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
         if(sourceOperandTag === BasicBackend.symbolByName.Constant)
             continue;
-        let sourceOperand = sourceOperands.get(sourceOperandTag);
-        const sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag),
-              destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
+        let sourceOperand = sourceOperands.get(sourceOperandTag),
+            sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag);
+        if(sourceOperandTag === BasicBackend.symbolByName.Bundle) {
+            sourceOperand = sourceOperandBundle;
+            sourceLlvmValue = sourceLlvmValueBundle;
+        }
+        const destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
               destinationOperat = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperat),
               destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
         if(sourceOperand && sourceLlvmValue)
@@ -94,28 +98,38 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
     }
 }
 
-export function buildLlvmBundle(context, llvmBasicBlock, destinationLlvmValues) {
-    if(destinationLlvmValues.length < 2)
-        return (destinationLlvmValues.length === 1) ? destinationLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(destinationLlvmValues.map(value => value.type));
-    let sourceLlvmValue = new LLVMLiteralConstant(dataType);
-    destinationLlvmValues.forEach(function(destinationLlvmValue, index) {
-        const instruction = new LLVMInsertValueInstruction(new LLVMValue(sourceLlvmValue.type), sourceLlvmValue, [index], destinationLlvmValue);
-        llvmBasicBlock.instructions.push(instruction);
-        sourceLlvmValue = instruction.result;
-    });
-    return sourceLlvmValue;
+export function buildLlvmMergeBundles(context, llvmBasicBlock, llvmValueBundleA, llvmValueBundleB) {
+    // TODO
+    return bundleLlvmValue;
 }
 
-export function buildLlvmUnbundle(context, llvmBasicBlock, sourceLlvmValues) {
-    if(sourceLlvmValues.length < 2)
-        return (sourceLlvmValues.length === 1) ? sourceLlvmValues[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(sourceLlvmValues.map(value => value.type)),
-          destinationLlvmValue = new LLVMValue(dataType);
-    sourceLlvmValues.forEach(function(sourceLlvmValue, index) {
-        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(sourceLlvmValue, destinationLlvmValue, [index]));
+export function buildLlvmSplitBundle(context, llvmBasicBlock, llvmValueBundleA, llvmValueBundleB) {
+    // TODO
+    return bundleLlvmValue;
+}
+
+export function buildLlvmBundle(context, llvmBasicBlock, llvmValueBundle) {
+    if(llvmValueBundle.length < 2)
+        return (llvmValueBundle.length === 1) ? llvmValueBundle[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(llvmValueBundle.map(value => value.type));
+    let bundleLlvmValue = new LLVMLiteralConstant(dataType);
+    llvmValueBundle.forEach(function(llvmValue, index) {
+        const instruction = new LLVMInsertValueInstruction(new LLVMValue(bundleLlvmValue.type), bundleLlvmValue, [index], llvmValue);
+        llvmBasicBlock.instructions.push(instruction);
+        bundleLlvmValue = instruction.result;
     });
-    return destinationLlvmValue;
+    return bundleLlvmValue;
+}
+
+export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValueBundle) {
+    if(llvmValueBundle.length < 2)
+        return (llvmValueBundle.length === 1) ? llvmValueBundle[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(llvmValueBundle.map(value => value.type)),
+          bundleLlvmValue = new LLVMValue(dataType);
+    llvmValueBundle.forEach(function(llvmValue, index) {
+        llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(llvmValue, bundleLlvmValue, [index]));
+    });
+    return bundleLlvmValue;
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
@@ -134,16 +148,16 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
             }
             operationsBlockedByThis.add(operation);
             entry.aux.blockedOperations.add(operation);
-            return [instanceEntry, false];
+            return [instanceEntry, false, undefined];
         }
         if(!instanceEntry.llvmFunction)
-            return [instanceEntry, new Map()];
+            return [instanceEntry, new Map(), LLVMVoidConstant];
         sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands);
     }
     const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
     llvmBasicBlock.instructions.push(callInstruction);
     callInstruction.result = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
-    return [instanceEntry, sourceLlvmValues];
+    return [instanceEntry, sourceLlvmValues, callInstruction.result];
 }
 
 export function buildLLVMFunction(context, entry, returnValue, alwaysinline=true) {
@@ -159,7 +173,8 @@ export function finishExecution(context, entry) {
         context.llvmModule.functions.push(entry.llvmFunction);
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
-    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperands, bundleOperands(context, entry.outputOperands)], true);
+    entry.outputOperandBundle = bundleOperands(context, entry.outputOperands);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperands, entry.outputOperandBundle], true);
     if(operationsBlockedByThis)
         for(const [blockedEntry, operations] of operationsBlockedByThis) {
             for(const operation of operations) {

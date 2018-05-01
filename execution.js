@@ -15,9 +15,9 @@ function executePrimitiveDeferEvaluation(context, entry) {
 }
 
 function executePrimitiveBundle(context, entry) {
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, bundleOperands(context, entry.inputOperands));
-    const outputLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
-    buildLLVMFunction(context, entry, outputLlvmValue);
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, entry.inputOperandBundle); // bundleOperands(context, entry.inputOperands)
+    // const outputLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
+    buildLLVMFunction(context, entry, entry.aux.inputLlvmValueBundle);
     finishExecution(context, entry);
 }
 
@@ -69,7 +69,7 @@ function executePrimitiveIf(context, entry) {
     if(!entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.Condition)) {
         const operation = context.ontology.getData(entry.inputOperands.get(BasicBackend.symbolByName.Condition)) ? 0 : 1;
         entry.aux.resume = function() {
-            const [instanceEntry, sourceLlvmValues] = buildLlvmCall(
+            const [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context, entry.aux.llvmBasicBlock, entry, operation,
                 entry.aux.operatDestinationOperands[operation],
                 entry.aux.operatDestinationLlvmValues[operation]
@@ -85,13 +85,13 @@ function executePrimitiveIf(context, entry) {
         entry.aux.resume();
         return;
     }
-    entry.aux.branchToExit = new LLVMBranchInstruction(new LLVMBasicBlock());
+    entry.aux.branchToExit = new LLVMBranchInstruction(entry.aux.llvmBasicBlock);
     entry.aux.phiInstruction = new LLVMPhiInstruction(undefined, [], [new LLVMBasicBlock(), new LLVMBasicBlock()]);
     entry.aux.resume = function() {
         while(entry.aux.readyOperations.length > 0) {
             const operation = entry.aux.readyOperations.shift(),
                   label = entry.aux.phiInstruction.caseLabels[operation],
-                  [instanceEntry, sourceLlvmValues] = buildLlvmCall(
+                  [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context, label, entry, operation,
                 entry.aux.operatDestinationOperands[operation],
                 entry.aux.operatDestinationLlvmValues[operation]
@@ -111,15 +111,14 @@ function executePrimitiveIf(context, entry) {
             entry.aux.phiInstruction.result = new LLVMValue(outputLlvmValue.type);
             entry.aux.branchToExit.destinationLabel.instructions = [entry.aux.phiInstruction];
             buildLLVMFunction(context, entry, entry.aux.phiInstruction.result);
-            entry.llvmFunction.basicBlocks[0].instructions = [new LLVMConditionalBranchInstruction(
-                getLlvmValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+            entry.llvmFunction.basicBlocks.splice(0, 0,
+                new LLVMBasicBlock(undefined, [new LLVMConditionalBranchInstruction(
+                    getLlvmValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+                    entry.aux.phiInstruction.caseLabels[0],
+                    entry.aux.phiInstruction.caseLabels[1]
+                )]),
                 entry.aux.phiInstruction.caseLabels[0],
                 entry.aux.phiInstruction.caseLabels[1]
-            )];
-            entry.llvmFunction.basicBlocks.splice(1, 0,
-                entry.aux.phiInstruction.caseLabels[0],
-                entry.aux.phiInstruction.caseLabels[1],
-                entry.aux.branchToExit.destinationLabel
             );
             entry.aux.ready = true;
         }
@@ -140,7 +139,7 @@ function executeCustomOperator(context, entry) {
     entry.aux.resume = function() {
         while(entry.aux.readyOperations.length > 0) {
             const operation = entry.aux.readyOperations.shift(),
-                  [instanceEntry, sourceLlvmValues] = buildLlvmCall(
+                  [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context,
                 entry.aux.llvmBasicBlock,
                 entry,
@@ -149,12 +148,12 @@ function executeCustomOperator(context, entry) {
                 entry.aux.operatDestinationLlvmValues.get(operation)
             );
             if(sourceLlvmValues)
-                propagateSources(context, entry, operation, instanceEntry.outputOperands, sourceLlvmValues);
+                propagateSources(context, entry, operation, instanceEntry.outputOperands, sourceLlvmValues, entry.outputOperandBundle, sourceLlvmValueBundle);
         }
         if(entry.aux.blockedOperations.size > 0)
             return;
         if(entry.aux.unsatisfiedOperations.size > 0)
-            throw new Error('Operations are not a DAG, topological sort not possible');
+            throw new Error('Topological sort failed: Operations are not a DAG');
         const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
         buildLLVMFunction(context, entry, returnLlvmValue, false);
         finishExecution(context, entry);
@@ -162,7 +161,7 @@ function executeCustomOperator(context, entry) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
         collectDestinations(context, entry, triple[2]);
     collectDestinations(context, entry, entry.operator);
-    propagateSources(context, entry, entry.operator, entry.inputOperands, entry.aux.inputLlvmValues);
+    propagateSources(context, entry, entry.operator, entry.inputOperands, entry.aux.inputLlvmValues, entry.inputOperandBundle, entry.aux.inputLlvmValueBundle);
     entry.aux.resume();
 }
 
@@ -174,15 +173,17 @@ export function execute(context, inputOperands) {
     entry.hash = hashOfOperands(context, entry.inputOperands);
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
+    entry.inputOperandBundle = bundleOperands(context, entry.inputOperands);
     entry.outputOperands = new Map();
     entry.aux = {
-        'inputLlvmValues': operandsToLlvmValues(context, entry.inputOperands),
-        'llvmBasicBlock': new LLVMBasicBlock()
+        'llvmBasicBlock': new LLVMBasicBlock(),
+        'inputLlvmValues': operandsToLlvmValues(context, entry.inputOperands)
     };
+    entry.aux.inputLlvmValueBundle = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperatorInstance], true);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
-    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperands, bundleOperands(context, entry.inputOperands)], true);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperands, entry.inputOperandBundle], true);
     context.operatorInstanceBySymbol.set(entry.symbol, entry);
     context.operatorInstanceByHash.set(entry.hash, entry);
     switch(entry.operator) {
