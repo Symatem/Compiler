@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, bundleOperands, operandsToLlvmValues } from './values.js';
+import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -67,7 +67,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
             continue;
         let sourceOperand = sourceOperands.get(sourceOperandTag),
             sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag);
-        if(sourceOperandTag === BasicBackend.symbolByName.Bundle) {
+        if(sourceOperandTag === BasicBackend.symbolByName.Operands) {
             sourceOperand = sourceOperandBundle;
             sourceLlvmValue = sourceLlvmValueBundle;
         }
@@ -98,22 +98,22 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
     }
 }
 
-export function buildLlvmMergeBundles(context, llvmBasicBlock, llvmValueBundleA, llvmValueBundleB) {
+export function buildLlvmMergeBundles(context, llvmBasicBlock, llvmValuesA, llvmValuesB) {
     // TODO
     return bundleLlvmValue;
 }
 
-export function buildLlvmSplitBundle(context, llvmBasicBlock, llvmValueBundleA, llvmValueBundleB) {
+export function buildLlvmSplitBundle(context, llvmBasicBlock, llvmValuesA, llvmValuesB) {
     // TODO
     return bundleLlvmValue;
 }
 
-export function buildLlvmBundle(context, llvmBasicBlock, llvmValueBundle) {
-    if(llvmValueBundle.length < 2)
-        return (llvmValueBundle.length === 1) ? llvmValueBundle[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(llvmValueBundle.map(value => value.type));
+export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
+    if(llvmValues.length < 2)
+        return (llvmValues.length === 1) ? llvmValues[0] : LLVMVoidConstant;
+    const dataType = new LLVMStructureType(llvmValues.map(value => value.type));
     let bundleLlvmValue = new LLVMLiteralConstant(dataType);
-    llvmValueBundle.forEach(function(llvmValue, index) {
+    llvmValues.forEach(function(llvmValue, index) {
         const instruction = new LLVMInsertValueInstruction(new LLVMValue(bundleLlvmValue.type), bundleLlvmValue, [index], llvmValue);
         llvmBasicBlock.instructions.push(instruction);
         bundleLlvmValue = instruction.result;
@@ -121,15 +121,37 @@ export function buildLlvmBundle(context, llvmBasicBlock, llvmValueBundle) {
     return bundleLlvmValue;
 }
 
-export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValueBundle) {
-    if(llvmValueBundle.length < 2)
-        return (llvmValueBundle.length === 1) ? llvmValueBundle[0] : LLVMVoidConstant;
-    const dataType = new LLVMStructureType(llvmValueBundle.map(value => value.type)),
-          bundleLlvmValue = new LLVMValue(dataType);
-    llvmValueBundle.forEach(function(llvmValue, index) {
+export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValues, bundleLlvmValue) {
+    if(llvmValues.length < 2)
+        return (llvmValues.length === 1) ? llvmValues[0] : LLVMVoidConstant;
+    if(!bundleLlvmValue) {
+        const dataType = new LLVMStructureType(llvmValues.map(value => value.type));
+        bundleLlvmValue = new LLVMValue(dataType);
+    }
+    llvmValues.forEach(function(llvmValue, index) {
         llvmBasicBlock.instructions.push(new LLVMExtractValueInstruction(llvmValue, bundleLlvmValue, [index]));
     });
     return bundleLlvmValue;
+}
+
+export function unbundleAndMixOperands(context, entry, operands, llvmValues) {
+    if(!operands.has(BasicBackend.symbolByName.Operands))
+        return;
+    const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.Operands)),
+          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.Operands),
+          overwriteOperands = new Set();
+    operands.delete(BasicBackend.symbolByName.Operands);
+    llvmValues.delete(BasicBackend.symbolByName.Operands);
+    for(const [operandTag, operand] of bundleOperands)
+        if(operands.has(operandTag))
+            overwriteOperands.add(operandTag);
+        else
+            operands.set(operandTag, operand);
+    const bundleLlvmValues = operandsToLlvmValues(context, bundleOperands);
+    buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValues.values()), bundleLlvmValue);
+    for(const [operandTag, llvmValue] of bundleLlvmValues)
+        if(!overwriteOperands.has(operandTag))
+            llvmValues.set(operandTag, llvmValue);
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
@@ -162,7 +184,7 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
 
 export function buildLLVMFunction(context, entry, returnValue, alwaysinline=true) {
     entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnValue));
-    entry.llvmFunction = new LLVMFunction(`"${entry.symbol}"`, returnValue.type, Array.from(entry.aux.inputLlvmValues.values()), [entry.aux.llvmBasicBlock]);
+    entry.llvmFunction = new LLVMFunction('_'+entry.symbol.replace(':', '_'), returnValue.type, entry.aux.llvmFunctionParameters, [entry.aux.llvmBasicBlock]);
     if(alwaysinline)
         entry.llvmFunction.attributes.push('alwaysinline');
     entry.llvmFunction.linkage = 'private';

@@ -2,7 +2,7 @@ import { LLVMIntegerType } from './LLVM/Type.js';
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { bundleOperands, unbundleOperands, operandsToLlvmValues, getLlvmValue } from './values.js';
-import { hashOfOperands, buildLlvmBundle, collectDestinations, propagateSources, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
+import { hashOfOperands, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -154,6 +154,7 @@ function executeCustomOperator(context, entry) {
             return;
         if(entry.aux.unsatisfiedOperations.size > 0)
             throw new Error('Topological sort failed: Operations are not a DAG');
+        unbundleAndMixOperands(context, entry, entry.outputOperands, entry.aux.outputLlvmValues);
         const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
         buildLLVMFunction(context, entry, returnLlvmValue, false);
         finishExecution(context, entry);
@@ -166,19 +167,21 @@ function executeCustomOperator(context, entry) {
 }
 
 export function execute(context, inputOperands) {
-    const entry = {'inputOperands': inputOperands},
-          parts = [];
+    const entry = {'inputOperands': inputOperands};
     entry.operator = entry.inputOperands.get(BasicBackend.symbolByName.Operator);
     entry.inputOperands = entry.inputOperands.sorted();
     entry.hash = hashOfOperands(context, entry.inputOperands);
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
-    entry.inputOperandBundle = bundleOperands(context, entry.inputOperands);
     entry.outputOperands = new Map();
     entry.aux = {
         'llvmBasicBlock': new LLVMBasicBlock(),
         'inputLlvmValues': operandsToLlvmValues(context, entry.inputOperands)
     };
+    entry.aux.llvmFunctionParameters = Array.from(entry.aux.inputLlvmValues.values());
+    unbundleAndMixOperands(context, entry, entry.inputOperands, entry.aux.inputLlvmValues);
+    entry.inputOperands.delete(BasicBackend.symbolByName.Operator);
+    entry.inputOperandBundle = bundleOperands(context, entry.inputOperands);
     entry.aux.inputLlvmValueBundle = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
     entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperatorInstance], true);

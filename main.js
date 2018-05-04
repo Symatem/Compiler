@@ -23,7 +23,7 @@ export class CompilerContext {
             'Operation',
             'Carrier',
             'CarrierBundle',
-            'Constant',
+            'Operands',
             'InputOperands',
             'OutputOperands',
 
@@ -32,6 +32,7 @@ export class CompilerContext {
             'SourceOperandTag',
             'DestinationOperandTag',
             'TypedPlaceholder',
+            'Constant',
 
             'PlaceholderEncoding',
             'One',
