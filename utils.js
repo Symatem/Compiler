@@ -30,8 +30,12 @@ export function hashOfOperands(context, operands) {
 export function collectDestinations(context, entry, destinationOperat) {
     let carriers = new Map(),
         referenceCount = 0;
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat]))
-        carriers.set(context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag), triple[0]);
+    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat])) {
+        const destinationOperandTag = context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag);
+        if(carriers.has(destinationOperandTag))
+            throw new Error('DestinationOperandTag collision detected');
+        carriers.set(destinationOperandTag, triple[0]);
+    }
     carriers = carriers.sorted();
     const destinationOperands = (destinationOperat === entry.operator) ? entry.outputOperands : new Map(),
           destinationLlvmValues = new Map();
@@ -98,16 +102,6 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
     }
 }
 
-export function buildLlvmMergeBundles(context, llvmBasicBlock, llvmValuesA, llvmValuesB) {
-    // TODO
-    return bundleLlvmValue;
-}
-
-export function buildLlvmSplitBundle(context, llvmBasicBlock, llvmValuesA, llvmValuesB) {
-    // TODO
-    return bundleLlvmValue;
-}
-
 export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
     if(llvmValues.length < 2)
         return (llvmValues.length === 1) ? llvmValues[0] : LLVMVoidConstant;
@@ -138,20 +132,18 @@ export function unbundleAndMixOperands(context, entry, operands, llvmValues) {
     if(!operands.has(BasicBackend.symbolByName.Operands))
         return;
     const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.Operands)),
-          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.Operands),
-          overwriteOperands = new Set();
+          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.Operands);
     operands.delete(BasicBackend.symbolByName.Operands);
     llvmValues.delete(BasicBackend.symbolByName.Operands);
     for(const [operandTag, operand] of bundleOperands)
         if(operands.has(operandTag))
-            overwriteOperands.add(operandTag);
+            throw new Error('DestinationOperandTag collision detected');
         else
             operands.set(operandTag, operand);
     const bundleLlvmValues = operandsToLlvmValues(context, bundleOperands);
     buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValues.values()), bundleLlvmValue);
     for(const [operandTag, llvmValue] of bundleLlvmValues)
-        if(!overwriteOperands.has(operandTag))
-            llvmValues.set(operandTag, llvmValue);
+        llvmValues.set(operandTag, llvmValue);
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
