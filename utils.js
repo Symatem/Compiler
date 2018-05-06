@@ -128,7 +128,9 @@ export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValues, bundleLlv
     return bundleLlvmValue;
 }
 
-export function unbundleAndMixOperands(context, entry, operands, llvmValues) {
+export function unbundleAndMixOperands(context, entry, direction) {
+    const operands = entry[direction+'Operands'],
+          llvmValues = entry.aux[direction+'LlvmValues'];
     if(!operands.has(BasicBackend.symbolByName.Operands))
         return;
     const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.Operands)),
@@ -144,6 +146,8 @@ export function unbundleAndMixOperands(context, entry, operands, llvmValues) {
     buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValues.values()), bundleLlvmValue);
     for(const [operandTag, llvmValue] of bundleLlvmValues)
         llvmValues.set(operandTag, llvmValue);
+    entry[direction+'Operands'] = operands.sorted();
+    entry.aux[direction+'LlvmValues'] = llvmValues.sorted();
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {

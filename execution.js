@@ -15,8 +15,7 @@ function executePrimitiveDeferEvaluation(context, entry) {
 }
 
 function executePrimitiveBundle(context, entry) {
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, entry.inputOperandBundle); // bundleOperands(context, entry.inputOperands)
-    // const outputLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, entry.inputOperandBundle);
     buildLLVMFunction(context, entry, entry.aux.inputLlvmValueBundle);
     finishExecution(context, entry);
 }
@@ -25,6 +24,28 @@ function executePrimitiveUnbundle(context, entry) {
     entry.outputOperands = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.Input));
     const outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
     buildLLVMFunction(context, entry, outputLlvmValue);
+    finishExecution(context, entry);
+}
+
+function executePrimitiveMergeBundles(context, entry) {
+    const bundleOperandsL = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.InputL)),
+          bundleOperandsR = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.InputR));
+          bundleLlvmValuesL = operandsToLlvmValues(context, bundleOperandsL),
+          bundleLlvmValuesR = operandsToLlvmValues(context, bundleOperandsR);
+    buildLlvmUnbundle(context, llvmBasicBlock, Array.from(bundleLlvmValuesL.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputL));
+    buildLlvmUnbundle(context, llvmBasicBlock, Array.from(bundleLlvmValuesR.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputR));
+    for(const [operandTag, operand] of bundleOperandsR) {
+        if(bundleOperandsL.has(operandTag))
+            throw new Error('OperandTag collision detected');
+        bundleOperandsL.set(operandTag, operand);
+        const llvmValue = bundleLlvmValuesR.get(operandTag);
+        if(llvmValue)
+            bundleLlvmValuesL.set(operandTag, llvmValue);
+    }
+    const bundleOperand = bundleOperands(context, bundleOperandsL.sorted()),
+          bundleLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValuesL.sorted().values()));
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, bundleOperand);
+    buildLLVMFunction(context, entry, bundleLlvmValue);
     finishExecution(context, entry);
 }
 
@@ -154,7 +175,7 @@ function executeCustomOperator(context, entry) {
             return;
         if(entry.aux.unsatisfiedOperations.size > 0)
             throw new Error('Topological sort failed: Operations are not a DAG');
-        unbundleAndMixOperands(context, entry, entry.outputOperands, entry.aux.outputLlvmValues);
+        unbundleAndMixOperands(context, entry, 'output');
         const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
         buildLLVMFunction(context, entry, returnLlvmValue, false);
         finishExecution(context, entry);
@@ -179,7 +200,7 @@ export function execute(context, inputOperands) {
         'inputLlvmValues': operandsToLlvmValues(context, entry.inputOperands)
     };
     entry.aux.llvmFunctionParameters = Array.from(entry.aux.inputLlvmValues.values());
-    unbundleAndMixOperands(context, entry, entry.inputOperands, entry.aux.inputLlvmValues);
+    unbundleAndMixOperands(context, entry, 'input');
     entry.inputOperands.delete(BasicBackend.symbolByName.Operator);
     entry.inputOperandBundle = bundleOperands(context, entry.inputOperands);
     entry.aux.inputLlvmValueBundle = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
