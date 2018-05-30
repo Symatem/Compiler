@@ -1,7 +1,7 @@
 import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
-import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
+import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
 import { execute } from './execution.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -64,14 +64,17 @@ export function collectDestinations(context, entry, destinationOperat) {
 }
 
 export function propagateSources(context, entry, sourceOperat, sourceOperands, sourceLlvmValues, sourceOperandBundle, sourceLlvmValueBundle) {
+    const unusedOperandTags = new Set(sourceOperands.keys());
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.SourceOperat, sourceOperat])) {
         const carrier = triple[0],
               sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
         if(sourceOperandTag === BasicBackend.symbolByName.Constant)
             continue;
+        unusedOperandTags.delete(sourceOperandTag);
         let sourceOperand = sourceOperands.get(sourceOperandTag),
             sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag);
         if(sourceOperandTag === BasicBackend.symbolByName.Operands) {
+            unusedOperandTags.clear();
             sourceOperand = sourceOperandBundle;
             sourceLlvmValue = sourceLlvmValueBundle;
         }
@@ -84,7 +87,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
             destinationLlvmValues.delete(destinationOperandTag);
         if(!sourceOperand) {
             sourceOperand = BasicBackend.symbolByName.Void;
-            console.warn('Propagating Void Operand as fallback');
+            console.warn('Operand not found. Using Void as fallback');
         }
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
         if(sourceLlvmValue)
@@ -100,6 +103,8 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
                 entry.aux.unsatisfiedOperations.set(destinationOperat, referenceCount);
         }
     }
+    if(unusedOperandTags.size > 0)
+        console.warn('Unused operands');
 }
 
 export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
@@ -151,11 +156,17 @@ export function unbundleAndMixOperands(context, entry, direction) {
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
-    let instanceEntry, sourceLlvmValues;
-    if(destinationLlvmValues.has(BasicBackend.symbolByName.Operator)) {
-        throw new Error('Calling LLVMFunctionType is not implemented yet');
-        instanceEntry = {};
-        // TODO: LLVMFunctionType
+    let instanceEntry;
+    const operatorLlvmValue = destinationLlvmValues.has(BasicBackend.symbolByName.Operator);
+    if(operatorLlvmValue) {
+        if(operatorLlvmValue.type instanceof LLVMFunctionType) {
+            // TODO LLVMFunctionType
+            throw new Error('Calling LLVMFunctionType is not implemented yet');
+        } else if(operatorLlvmValue.type == LLVMSymbolType) {
+            // TODO
+            throw new Error('Dynamic operator dispatching is not implemented yet');
+        } else
+            throw new Error('Invalid dynamic operator');
     } else {
         instanceEntry = execute(context, destinationOperands);
         if(instanceEntry.aux && !instanceEntry.aux.ready) {
@@ -170,10 +181,10 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
         }
         if(!instanceEntry.llvmFunction)
             return [instanceEntry, new Map(), LLVMVoidConstant];
-        sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands);
     }
     const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
     llvmBasicBlock.instructions.push(callInstruction);
+    const sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands);
     callInstruction.result = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
     return [instanceEntry, sourceLlvmValues, callInstruction.result];
 }

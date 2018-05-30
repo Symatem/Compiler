@@ -79,9 +79,11 @@ function executePrimitiveIf(context, entry) {
     for(const operation of entry.aux.readyOperations) {
         const branch = (operation) ? 'Else' : 'Then';
         entry.aux.operatDestinationLlvmValues[operation] = new Map([
-            [BasicBackend.symbolByName.Input, entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input)],
-            // TODO: LLVMFunctionType; [BasicBackend.symbolByName.Operator, entry.aux.inputLlvmValues.get(BasicBackend.symbolByName[branch])]
+            [BasicBackend.symbolByName.Input, entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input)]
         ]);
+        const operatorLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName[branch]);
+        if(operatorLlvmValue)
+            entry.aux.operatDestinationLlvmValues[operation].set(BasicBackend.symbolByName.Operator, operatorLlvmValue);
         entry.aux.operatDestinationOperands[operation] = new Map([
             [BasicBackend.symbolByName.Input, entry.inputOperands.get(BasicBackend.symbolByName.Input)],
             [BasicBackend.symbolByName.Operator, entry.inputOperands.get(BasicBackend.symbolByName[branch])]
