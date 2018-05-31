@@ -28,20 +28,23 @@ function executePrimitiveUnbundle(context, entry) {
 }
 
 function executePrimitiveMergeBundles(context, entry) {
+    // TODO
     const bundleOperandsL = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.InputL)),
           bundleOperandsR = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.InputR));
           bundleLlvmValuesL = operandsToLlvmValues(context, bundleOperandsL),
           bundleLlvmValuesR = operandsToLlvmValues(context, bundleOperandsR);
-    buildLlvmUnbundle(context, llvmBasicBlock, Array.from(bundleLlvmValuesL.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputL));
-    buildLlvmUnbundle(context, llvmBasicBlock, Array.from(bundleLlvmValuesR.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputR));
+    buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValuesL.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputL));
+    buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValuesR.values()), entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.InputR));
+
     for(const [operandTag, operand] of bundleOperandsR) {
         if(bundleOperandsL.has(operandTag))
-            throw new Error('OperandTag collision detected');
+            context.throwError('OperandTag collision detected');
         bundleOperandsL.set(operandTag, operand);
         const llvmValue = bundleLlvmValuesR.get(operandTag);
         if(llvmValue)
             bundleLlvmValuesL.set(operandTag, llvmValue);
     }
+
     const bundleOperand = bundleOperands(context, bundleOperandsL.sorted()),
           bundleLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValuesL.sorted().values()));
     entry.outputOperands.set(BasicBackend.symbolByName.Output, bundleOperand);
@@ -56,7 +59,7 @@ function executePrimitiveBinaryInstruction(context, entry, compileCallback, inte
         const inputLlvmValueL = getLlvmValue(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
               inputLlvmValueR = getLlvmValue(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
         if(inputLlvmValueL.type !== inputLlvmValueR.type)
-            throw new Error('InputL and InputR type mismatch');
+            context.throwError('InputL and InputR type mismatch');
         const [outputOperand, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
         entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
         entry.aux.llvmBasicBlock.instructions.push(operation);
@@ -127,7 +130,7 @@ function executePrimitiveIf(context, entry) {
             entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue;
             if(entry.aux.ready) {
                 if(entry.aux.phiInstruction.caseValues[0].type !== entry.aux.phiInstruction.caseValues[1].type)
-                    throw new Error('Then Output and Else Output type mismatch');
+                    context.throwError('Then Output and Else Output type mismatch');
                 continue;
             }
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
@@ -145,8 +148,10 @@ function executePrimitiveIf(context, entry) {
             );
             entry.aux.ready = true;
         }
-        if(entry.aux.blockedOperations.size > 0)
+        if(entry.aux.blockedOperations.size > 0) {
+            context.popStackFrame(entry, 'Blocked');
             return;
+        }
         finishExecution(context, entry);
     };
     entry.aux.resume();
@@ -161,8 +166,9 @@ function executeCustomOperator(context, entry) {
     entry.aux.blockedOperations = new Set();
     entry.aux.resume = function() {
         while(entry.aux.readyOperations.length > 0) {
-            const operation = entry.aux.readyOperations.shift(),
-                  [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
+            const operation = entry.aux.readyOperations.shift();
+            context.log('Operation '+operation);
+            const [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context,
                 entry.aux.llvmBasicBlock,
                 entry,
@@ -173,10 +179,12 @@ function executeCustomOperator(context, entry) {
             if(sourceLlvmValues)
                 propagateSources(context, entry, operation, instanceEntry.outputOperands, sourceLlvmValues, entry.outputOperandBundle, sourceLlvmValueBundle);
         }
-        if(entry.aux.blockedOperations.size > 0)
+        if(entry.aux.blockedOperations.size > 0) {
+            context.popStackFrame(entry, 'Blocked');
             return;
+        }
         if(entry.aux.unsatisfiedOperations.size > 0)
-            throw new Error('Topological sort failed: Operations are not a DAG');
+            context.throwError('Topological sort failed: Operations are not a DAG');
         unbundleAndMixOperands(context, entry, 'output');
         const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
         buildLLVMFunction(context, entry, returnLlvmValue, false);
@@ -196,6 +204,8 @@ export function execute(context, inputOperands) {
     entry.hash = hashOfOperands(context, entry.inputOperands);
     if(context.operatorInstanceByHash.has(entry.hash))
         return context.operatorInstanceByHash.get(entry.hash);
+    entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
+    context.pushStackFrame(entry, 'Begin');
     entry.outputOperands = new Map();
     entry.aux = {
         'llvmBasicBlock': new LLVMBasicBlock(),
@@ -206,7 +216,6 @@ export function execute(context, inputOperands) {
     entry.inputOperands.delete(BasicBackend.symbolByName.Operator);
     entry.inputOperandBundle = bundleOperands(context, entry.inputOperands);
     entry.aux.inputLlvmValueBundle = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
-    entry.symbol = context.ontology.createSymbol(context.executionNamespaceId);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperatorInstance], true);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
     context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperands, entry.inputOperandBundle], true);
@@ -215,7 +224,7 @@ export function execute(context, inputOperands) {
     switch(entry.operator) {
         case undefined:
         case BasicBackend.symbolByName.Void:
-            throw new Error('Tried calling Void as Operator');
+            context.throwError('Tried calling Void as Operator');
         case BasicBackend.symbolByName.DeferEvaluation:
             executePrimitiveDeferEvaluation(context, entry);
             break;

@@ -14,6 +14,8 @@ export class CompilerContext {
         this.typedPlaceholderCache = new Map();
         this.operatorInstanceBySymbol = new Map();
         this.operatorInstanceByHash = new Map();
+        this.stackHeight = 0;
+        this.logMessages = [];
         this.llvmModule = new LLVMModule('Symatem');
         this.executionNamespaceId =
         this.programNamespaceId =
@@ -53,6 +55,10 @@ export class CompilerContext {
             'DeferEvaluation',
             'Bundle',
             'Unbundle',
+            'MergeBundles',
+            'InsertIntoBundle',
+            'EraseFromBundle',
+
             'Addition',
             'Subtraction',
             'Multiplication',
@@ -108,6 +114,29 @@ export class CompilerContext {
         };
     }
 
+    log(message) {
+        this.logMessages.push('  '.repeat(this.stackHeight)+message);
+    }
+
+    throwError(message) {
+        this.log('ERROR: '+message);
+        throw new Error(message);
+    }
+
+    throwWarning(message) {
+        this.log('WARNING: '+message);
+    }
+
+    pushStackFrame(entry, message) {
+        this.log(message+' '+entry.symbol+' '+this.ontology.getData(entry.operator));
+        ++this.stackHeight;
+    }
+
+    popStackFrame(entry, message) {
+        this.log(message);
+        --this.stackHeight;
+    }
+
     llvmCode() {
         return this.llvmModule.serialize();
     }
@@ -155,7 +184,7 @@ export class CompilerContext {
     execute(inputs, exportUsingAlias) {
         const entry = execute(this, inputs);
         if(entry.aux)
-            throw new Error('Encountered recursion cycle which could not be resolved');
+            this.throwError('Encountered recursion cycle which could not be resolved');
         if(exportUsingAlias && entry.llvmFunction)
             this.llvmModule.aliases.push(new LLVMAlias(this.ontology.getData(entry.operator), entry.llvmFunction));
         return entry.outputOperands;
