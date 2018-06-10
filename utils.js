@@ -27,6 +27,15 @@ export function hashOfOperands(context, operands) {
     return view.djb2Hash();
 }
 
+export function renamedOperands(destinationOperands, destinationLlvmValues, entry, operandTags) {
+    for(const [dstOperandTag, srcOperandTag] of operandTags) {
+        destinationOperands.set(dstOperandTag, entry.inputOperands.get(srcOperandTag));
+        const llvmValue = entry.aux.inputLlvmValues.get(srcOperandTag);
+        if(llvmValue)
+            destinationLlvmValues.set(dstOperandTag, llvmValue);
+    }
+}
+
 export function collectDestinations(context, entry, destinationOperat) {
     let carriers = new Map(),
         referenceCount = 0;
@@ -168,29 +177,31 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
             context.throwError('Dynamic operator dispatching is not implemented yet');
         } else
             context.throwError('Invalid dynamic operator');
-    } else {
-        instanceEntry = execute(context, destinationOperands);
-        if(instanceEntry.aux && !instanceEntry.aux.ready) {
-            let operationsBlockedByThis = instanceEntry.aux.operationsBlockedByThis.get(entry);
-            if(!operationsBlockedByThis) {
-                operationsBlockedByThis = new Set();
-                instanceEntry.aux.operationsBlockedByThis.set(entry, operationsBlockedByThis);
-            }
-            operationsBlockedByThis.add(operation);
-            entry.aux.blockedOperations.add(operation);
-            return [instanceEntry, false, undefined];
-        }
-        if(!instanceEntry.llvmFunction)
-            return [instanceEntry, new Map(), LLVMVoidConstant];
     }
-    const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
-    llvmBasicBlock.instructions.push(callInstruction);
-    const sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands);
-    callInstruction.result = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
-    return [instanceEntry, sourceLlvmValues, callInstruction.result];
+    instanceEntry = execute(context, destinationOperands);
+    if(instanceEntry.aux && !instanceEntry.aux.ready) {
+        let operationsBlockedByThis = instanceEntry.aux.operationsBlockedByThis.get(entry);
+        if(!operationsBlockedByThis) {
+            operationsBlockedByThis = new Set();
+            instanceEntry.aux.operationsBlockedByThis.set(entry, operationsBlockedByThis);
+        }
+        operationsBlockedByThis.add(operation);
+        entry.aux.blockedOperations.add(operation);
+        return [instanceEntry, false, undefined];
+    }
+    const sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands),
+          sourceLlvmValueBundle = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
+    if(instanceEntry.llvmFunction) {
+        const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
+        llvmBasicBlock.instructions.push(callInstruction);
+        callInstruction.result = sourceLlvmValueBundle;
+    }
+    return [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle];
 }
 
 export function buildLLVMFunction(context, entry, returnValue, alwaysinline=true) {
+    if(!returnValue)
+        returnValue = LLVMVoidConstant;
     entry.aux.llvmBasicBlock.instructions.push(new LLVMReturnInstruction(returnValue));
     entry.llvmFunction = new LLVMFunction('_'+entry.symbol.replace(':', '_'), returnValue.type, entry.aux.llvmFunctionParameters, [entry.aux.llvmBasicBlock]);
     if(alwaysinline)

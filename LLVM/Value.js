@@ -68,7 +68,7 @@ export class LLVMBasicBlock extends LLVMConstant {
         if(!this.name)
             this.name = generateLocalName();
         for(const instruction of this.instructions)
-            if(instruction.result && !instruction.result.name)
+            if(instruction.result && instruction.result.type.name != 'void' && !instruction.result.name)
                 instruction.result.name = generateLocalName();
     }
 

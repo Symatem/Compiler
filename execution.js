@@ -2,7 +2,7 @@ import { LLVMIntegerType } from './LLVM/Type.js';
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
 import { LLVMReturnInstruction, LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
 import { bundleOperands, unbundleOperands, operandsToLlvmValues, getLlvmValue } from './values.js';
-import { hashOfOperands, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
+import { hashOfOperands, renamedOperands, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -55,12 +55,14 @@ function executePrimitiveMergeBundles(context, entry) {
 function executePrimitiveBinaryInstruction(context, entry, compileCallback, interpretCallback) {
     const inputL = entry.inputOperands.get(BasicBackend.symbolByName.InputL),
           inputR = entry.inputOperands.get(BasicBackend.symbolByName.InputR);
-    if(entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputL) || entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputR)) {
+    const isPlaceholderL = entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputL),
+          isPlaceholderR = entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.InputR);
+    if(isPlaceholderL || isPlaceholderR) {
         const inputLlvmValueL = getLlvmValue(context, BasicBackend.symbolByName.InputL, entry.inputOperands, entry.aux.inputLlvmValues)[1],
               inputLlvmValueR = getLlvmValue(context, BasicBackend.symbolByName.InputR, entry.inputOperands, entry.aux.inputLlvmValues)[1];
         if(inputLlvmValueL.type !== inputLlvmValueR.type)
             context.throwError('InputL and InputR type mismatch');
-        const [outputOperand, operation] = compileCallback(inputL, inputLlvmValueL, inputLlvmValueR);
+        const [outputOperand, operation] = compileCallback(isPlaceholderL ? inputL : inputR, inputLlvmValueL, inputLlvmValueR);
         entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
         entry.aux.llvmBasicBlock.instructions.push(operation);
         buildLLVMFunction(context, entry, operation.result);
@@ -81,15 +83,11 @@ function executePrimitiveIf(context, entry) {
     entry.aux.blockedOperations = new Set();
     for(const operation of entry.aux.readyOperations) {
         const branch = (operation) ? 'Else' : 'Then';
-        entry.aux.operatDestinationLlvmValues[operation] = new Map([
-            [BasicBackend.symbolByName.Input, entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input)]
-        ]);
-        const operatorLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName[branch]);
-        if(operatorLlvmValue)
-            entry.aux.operatDestinationLlvmValues[operation].set(BasicBackend.symbolByName.Operator, operatorLlvmValue);
-        entry.aux.operatDestinationOperands[operation] = new Map([
-            [BasicBackend.symbolByName.Input, entry.inputOperands.get(BasicBackend.symbolByName.Input)],
-            [BasicBackend.symbolByName.Operator, entry.inputOperands.get(BasicBackend.symbolByName[branch])]
+        entry.aux.operatDestinationOperands[operation] = new Map();
+        entry.aux.operatDestinationLlvmValues[operation] = new Map();
+        renamedOperands(entry.aux.operatDestinationOperands[operation], entry.aux.operatDestinationLlvmValues[operation], entry, [
+            [BasicBackend.symbolByName.Operator, BasicBackend.symbolByName[branch]],
+            [BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Input]
         ]);
     }
     if(!entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.Condition)) {
@@ -102,7 +100,8 @@ function executePrimitiveIf(context, entry) {
             );
             if(!sourceLlvmValues)
                 return;
-            const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
+            const outputOperand = instanceEntry.outputOperands.get(BasicBackend.symbolByName.Output),
+                  outputLlvmValue = sourceLlvmValues.get(BasicBackend.symbolByName.Output);
             entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
             if(instanceEntry.llvmFunction)
                 buildLLVMFunction(context, entry, outputLlvmValue);
@@ -124,7 +123,8 @@ function executePrimitiveIf(context, entry) {
             );
             if(!sourceLlvmValues)
                 continue;
-            label.instructions[0].attributes.push('alwaysinline');
+            if(label.instructions.length > 0)
+                label.instructions[0].attributes.push('alwaysinline');
             label.instructions.push(entry.aux.branchToExit);
             const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Output, instanceEntry.outputOperands, sourceLlvmValues);
             entry.aux.phiInstruction.caseValues[operation] = outputLlvmValue;
@@ -186,8 +186,10 @@ function executeCustomOperator(context, entry) {
         if(entry.aux.unsatisfiedOperations.size > 0)
             context.throwError('Topological sort failed: Operations are not a DAG');
         unbundleAndMixOperands(context, entry, 'output');
-        const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
-        buildLLVMFunction(context, entry, returnLlvmValue, false);
+        if(entry.aux.llvmBasicBlock.instructions.length > 0 || entry.aux.outputLlvmValues.size > 0) {
+            const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
+            buildLLVMFunction(context, entry, returnLlvmValue, false);
+        }
         finishExecution(context, entry);
     };
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
