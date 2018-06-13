@@ -27,13 +27,11 @@ export function hashOfOperands(context, operands) {
     return view.djb2Hash();
 }
 
-export function renamedOperands(destinationOperands, destinationLlvmValues, entry, operandTags) {
-    for(const [dstOperandTag, srcOperandTag] of operandTags) {
-        destinationOperands.set(dstOperandTag, entry.inputOperands.get(srcOperandTag));
-        const llvmValue = entry.aux.inputLlvmValues.get(srcOperandTag);
-        if(llvmValue)
-            destinationLlvmValues.set(dstOperandTag, llvmValue);
-    }
+export function copyAndRenameOperand(destinationOperands, destinationLlvmValues, entry, dstOperandTag, srcOperandTag) {
+    destinationOperands.set(dstOperandTag, entry.inputOperands.get(srcOperandTag));
+    const llvmValue = entry.aux.inputLlvmValues.get(srcOperandTag);
+    if(llvmValue)
+        destinationLlvmValues.set(dstOperandTag, llvmValue);
 }
 
 export function collectDestinations(context, entry, destinationOperat) {
@@ -42,7 +40,7 @@ export function collectDestinations(context, entry, destinationOperat) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat])) {
         const destinationOperandTag = context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag);
         if(carriers.has(destinationOperandTag))
-            context.throwError('DestinationOperandTag collision detected');
+            context.throwError(destinationOperandTag, 'DestinationOperandTag collision detected');
         carriers.set(destinationOperandTag, triple[0]);
     }
     carriers = carriers.sorted();
@@ -54,7 +52,7 @@ export function collectDestinations(context, entry, destinationOperat) {
         if(sourceOperandTag === BasicBackend.symbolByName.Constant) {
             const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat);
             if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
-                context.throwError('Const carrier uses a TypedPlaceholder as source operand');
+                context.throwError(carrier, 'Const carrier uses a TypedPlaceholder as source operand');
             destinationOperand = sourceOperand;
         } else {
             ++referenceCount;
@@ -96,7 +94,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
             destinationLlvmValues.delete(destinationOperandTag);
         if(!sourceOperand) {
             sourceOperand = BasicBackend.symbolByName.Void;
-            context.throwWarning('Operand not found. Using Void as fallback');
+            context.throwWarning(sourceOperandTag, 'Operand not found. Using Void as fallback');
         }
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
         if(sourceLlvmValue)
@@ -113,7 +111,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
         }
     }
     if(unusedOperandTags.size > 0)
-        context.throwWarning(unusedOperandTags.size+' unused operand(s)');
+        context.throwWarning(unusedOperandTags, 'Unused operand(s)');
 }
 
 export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
@@ -153,7 +151,7 @@ export function unbundleAndMixOperands(context, entry, direction) {
     llvmValues.delete(BasicBackend.symbolByName.Operands);
     for(const [operandTag, operand] of bundleOperands)
         if(operands.has(operandTag))
-            context.throwError('DestinationOperandTag collision detected');
+            context.throwError(operandTag, 'DestinationOperandTag collision detected');
         else
             operands.set(operandTag, operand);
     const bundleLlvmValues = operandsToLlvmValues(context, bundleOperands);
@@ -165,18 +163,20 @@ export function unbundleAndMixOperands(context, entry, direction) {
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
+    const operator = destinationOperands.get(BasicBackend.symbolByName.Operator);
+    context.log([operation, operator], 'Operation');
     let instanceEntry;
     const operatorLlvmValue = destinationLlvmValues.has(BasicBackend.symbolByName.Operator);
     if(operatorLlvmValue) {
         // TODO
         if(operatorLlvmValue.type instanceof LLVMFunctionType) {
             // TODO LLVMFunctionType
-            context.throwError('Calling LLVMFunctionType is not implemented yet');
+            context.throwError(operator, 'Calling LLVMFunctionType is not implemented yet');
         } else if(operatorLlvmValue.type == LLVMSymbolType) {
             // TODO
-            context.throwError('Dynamic operator dispatching is not implemented yet');
+            context.throwError(operator, 'Dynamic operator dispatching is not implemented yet');
         } else
-            context.throwError('Invalid dynamic operator');
+            context.throwError(operator, 'Invalid dynamic operator');
     }
     instanceEntry = execute(context, destinationOperands);
     if(instanceEntry.aux && !instanceEntry.aux.ready) {
@@ -189,13 +189,14 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
         entry.aux.blockedOperations.add(operation);
         return [instanceEntry, false, undefined];
     }
-    const sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands),
+    const instructionIndex = llvmBasicBlock.instructions.length,
+          sourceLlvmValues = operandsToLlvmValues(context, instanceEntry.outputOperands),
           sourceLlvmValueBundle = buildLlvmUnbundle(context, llvmBasicBlock, Array.from(sourceLlvmValues.values()));
     if(instanceEntry.llvmFunction) {
-        const callInstruction = new LLVMCallInstruction(undefined, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
-        llvmBasicBlock.instructions.push(callInstruction);
-        callInstruction.result = sourceLlvmValueBundle;
+        const callInstruction = new LLVMCallInstruction(sourceLlvmValueBundle, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
+        llvmBasicBlock.instructions.splice(instructionIndex, 0, callInstruction);
     }
+    context.log(instanceEntry.outputOperands, 'Outputs');
     return [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle];
 }
 

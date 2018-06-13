@@ -37,6 +37,7 @@ export class CompilerContext {
             'Constant',
 
             'PlaceholderEncoding',
+            'Zero',
             'One',
             'Two',
             'ThirtyTwo',
@@ -47,9 +48,8 @@ export class CompilerContext {
             'Integer32',
             'Float32',
 
-            'InputL',
-            'InputR',
             'Input',
+            'OtherInput',
             'Output',
 
             'DeferEvaluation',
@@ -61,7 +61,20 @@ export class CompilerContext {
 
             'Addition',
             'Subtraction',
+            'Minuend',
+            'Subtrahend',
             'Multiplication',
+            'Division',
+            'Dividend',
+            'Divisor',
+            'Quotient',
+            'Rest',
+
+            'And',
+            'Or',
+            'Xor',
+
+            'Comparand',
             'Equal',
             'NotEqual',
             'LessThan',
@@ -70,10 +83,11 @@ export class CompilerContext {
             'GreaterEqual',
 
             'If',
+            'Condition',
             'Then',
             'Else',
-            'Condition',
         ]);
+        this.ontology.setData(BasicBackend.symbolByName.Zero, 0);
         this.ontology.setData(BasicBackend.symbolByName.One, 1);
         this.ontology.setData(BasicBackend.symbolByName.Two, 2);
         this.ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
@@ -93,10 +107,20 @@ export class CompilerContext {
         setupTypedPlaceholder(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
         setupTypedPlaceholder(BasicBackend.symbolByName.Float32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.IEEE754);
         this.llvmLookupMaps = {
+            divisionPrefix: new Map([
+                [BasicBackend.symbolByName.BinaryNumber, 'u'],
+                [BasicBackend.symbolByName.TwosComplement, 's'],
+                [BasicBackend.symbolByName.IEEE754, 'f']
+            ]),
             binaryArithmetic: new Map([
                 [BasicBackend.symbolByName.Addition, 'add'],
                 [BasicBackend.symbolByName.Subtraction, 'sub'],
                 [BasicBackend.symbolByName.Multiplication, 'mul']
+            ]),
+            binaryBitwise: new Map([
+                [BasicBackend.symbolByName.And, 'and'],
+                [BasicBackend.symbolByName.Or, 'or'],
+                [BasicBackend.symbolByName.Xor, 'xor']
             ]),
             binaryComparison: new Map([
                 [BasicBackend.symbolByName.Equal, 'eq'],
@@ -114,26 +138,39 @@ export class CompilerContext {
         };
     }
 
-    log(message) {
-        this.logMessages.push('  '.repeat(this.stackHeight)+message);
+    log(symbols, message) {
+        const symbolToText = function(symbol) {
+            const data = this.ontology.getData(symbol);
+            return (data != undefined) ? data : '('+symbol+')';
+        }.bind(this);
+        const symbolsToText = [];
+        if(symbols instanceof Map)
+            for(const [key, value] of symbols)
+                symbolsToText.push(symbolToText(key)+'='+symbolToText(value));
+        else if(symbols instanceof Array || symbols instanceof Set)
+            for(const element of symbols)
+                symbolsToText.push(symbolToText(element));
+        else
+            symbolsToText.push(symbolToText(symbols));
+        this.logMessages.push('  '.repeat(this.stackHeight)+message+': '+symbolsToText.join(', '));
     }
 
-    throwError(message) {
-        this.log('ERROR: '+message);
+    throwError(symbols, message) {
+        this.log(symbols, 'ERROR: '+message);
         throw new Error(message);
     }
 
-    throwWarning(message) {
-        this.log('WARNING: '+message);
+    throwWarning(symbols, message) {
+        this.log(symbols, 'WARNING: '+message);
     }
 
     pushStackFrame(entry, message) {
-        this.log(message+' '+entry.symbol+' '+this.ontology.getData(entry.operator));
+        this.log(entry.symbol, message);
         ++this.stackHeight;
     }
 
     popStackFrame(entry, message) {
-        this.log(message);
+        this.log(entry.symbol, message);
         --this.stackHeight;
     }
 
@@ -181,12 +218,14 @@ export class CompilerContext {
         return symbol;
     }
 
-    execute(inputs, exportUsingAlias) {
+    execute(inputs, exportFunction) {
         const entry = execute(this, inputs);
         if(entry.aux)
-            this.throwError('Encountered recursion cycle which could not be resolved');
-        if(exportUsingAlias && entry.llvmFunction)
-            this.llvmModule.aliases.push(new LLVMAlias(this.ontology.getData(entry.operator), entry.llvmFunction));
+            this.throwError(entry.symbol, 'Encountered recursion cycle which could not be resolved');
+        if(exportFunction && entry.llvmFunction) {
+            delete entry.llvmFunction.linkage;
+            entry.llvmFunction.name = this.ontology.getData(entry.operator);
+        }
         return entry.outputOperands;
     }
 }

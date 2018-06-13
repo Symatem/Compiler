@@ -38,11 +38,11 @@ export function encodingToLlvmType(context, encoding, length) {
                 return new LLVMArrayType(length/8, new LLVMIntegerType(8));
         }
     if(!context.ontology.getTriple([encoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite]))
-        context.throwError('Encoding must be a Composite to describe a LLVMType');
+        context.throwError(encoding, 'Encoding must be a Composite to describe a LLVMType');
 
     let slotSize = context.ontology.getSolitary(encoding, BasicBackend.symbolByName.SlotSize);
     if(slotSize === BasicBackend.symbolByName.Dynamic)
-        context.throwError('LLVM does not support a Dynamic SlotSize');
+        context.throwError(encoding, 'LLVM does not support a Dynamic SlotSize');
     else if(slotSize !== BasicBackend.symbolByName.Void)
         slotSize = context.ontology.getData(slotSize);
 
@@ -50,7 +50,7 @@ export function encodingToLlvmType(context, encoding, length) {
 
     let count = context.ontology.getSolitary(encoding, BasicBackend.symbolByName.Count);
     if(count === BasicBackend.symbolByName.Dynamic)
-        context.throwError('LLVM does not support a Dynamic Count');
+        context.throwError(encoding, 'LLVM does not support a Dynamic Count');
     else if(count === BasicBackend.symbolByName.Void)
         return new LLVMPointerType(defaultDataType);
 
@@ -169,7 +169,7 @@ function convertToTypedPlaceholder(context, operand, llvmType) {
 export function getLlvmValue(context, operandTag, operands, llvmValues) {
     const operand = operands.get(operandTag);
     if(!operand)
-        context.throwError('Expected Input Operand is missing');
+        context.throwError(operandTag, 'Expected Input Operand is missing');
     if(llvmValues.has(operandTag))
         return [operand, llvmValues.get(operandTag)];
     const llvmValue = operandToLlvm(context, operand, LLVMConstant);
