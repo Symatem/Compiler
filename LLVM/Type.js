@@ -33,14 +33,8 @@ export class LLVMFloatType extends LLVMType {
             case 64:
                 super('double');
                 break;
-            case 80:
-                super('x86_fp80');
-                break;
             case 128:
                 super('fp128');
-                break;
-            default:
-                super('ppc_fp128');
                 break;
         }
         this.length = length;

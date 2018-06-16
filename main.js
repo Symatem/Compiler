@@ -1,8 +1,12 @@
 import { LLVMTypeCache } from './LLVM/Type.js';
-import { LLVMAlias } from './LLVM/Value.js';
+import { LLVMBasicBlock } from './LLVM/Value.js';
 import { LLVMModule } from './LLVM/Module.js';
-import { encodingToLlvmType } from './values.js';
-import { execute } from './execution.js';
+import { bundleOperands, operandsToLlvmValues } from './values.js';
+import { hashOfOperands, buildLlvmBundle, unbundleAndMixOperands } from './utils.js';
+import { primitiveDeferEvaluation, primitiveBundle, primitiveUnbundle,
+primitiveDivision, primitiveBinaryInstruction, compileBinaryArithmetic, compileBinaryComparison,
+primitiveIf, customOperator } from './primitives.js';
+import { throwError, pushStackFrame } from './stackTrace.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -24,10 +28,12 @@ export class CompilerContext {
             'OperatorInstance',
             'Operation',
             'Carrier',
-            'CarrierBundle',
-            'Operands',
-            'InputOperands',
-            'OutputOperands',
+            'Element',
+            'Operand',
+            'OperandTag',
+            'OperandBundle',
+            'InputOperandBundle',
+            'OutputOperandBundle',
 
             'SourceOperat',
             'DestinationOperat',
@@ -55,9 +61,10 @@ export class CompilerContext {
             'DeferEvaluation',
             'Bundle',
             'Unbundle',
-            'MergeBundles',
-            'InsertIntoBundle',
-            'EraseFromBundle',
+
+            'And',
+            'Or',
+            'Xor',
 
             'Addition',
             'Subtraction',
@@ -69,10 +76,6 @@ export class CompilerContext {
             'Divisor',
             'Quotient',
             'Rest',
-
-            'And',
-            'Or',
-            'Xor',
 
             'Comparand',
             'Equal',
@@ -99,7 +102,7 @@ export class CompilerContext {
             this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Count, BasicBackend.symbolByName.One], true);
             this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.SlotSize, size], true);
             this.ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Default, encoding], true);
-            this.typedPlaceholderCache.set(encodingToLlvmType(this, placeholderEncoding, size*count).serialize(), typedPlaceholder);
+            this.typedPlaceholderCache.set(encoding+','+this.ontology.getData(size), typedPlaceholder);
         }.bind(this);
         setupTypedPlaceholder(BasicBackend.symbolByName.Symbol, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Two);
         setupTypedPlaceholder(BasicBackend.symbolByName.Boolean, BasicBackend.symbolByName.One, BasicBackend.symbolByName.BinaryNumber);
@@ -113,14 +116,12 @@ export class CompilerContext {
                 [BasicBackend.symbolByName.IEEE754, 'f']
             ]),
             binaryArithmetic: new Map([
+                [BasicBackend.symbolByName.And, 'and'],
+                [BasicBackend.symbolByName.Or, 'or'],
+                [BasicBackend.symbolByName.Xor, 'xor'],
                 [BasicBackend.symbolByName.Addition, 'add'],
                 [BasicBackend.symbolByName.Subtraction, 'sub'],
                 [BasicBackend.symbolByName.Multiplication, 'mul']
-            ]),
-            binaryBitwise: new Map([
-                [BasicBackend.symbolByName.And, 'and'],
-                [BasicBackend.symbolByName.Or, 'or'],
-                [BasicBackend.symbolByName.Xor, 'xor']
             ]),
             binaryComparison: new Map([
                 [BasicBackend.symbolByName.Equal, 'eq'],
@@ -136,46 +137,68 @@ export class CompilerContext {
                 [BasicBackend.symbolByName.IEEE754, 'o']
             ])
         };
+        this.primitiveLookupMap = new Map([
+            [BasicBackend.symbolByName.DeferEvaluation, primitiveDeferEvaluation],
+            [BasicBackend.symbolByName.Bundle, primitiveBundle],
+            [BasicBackend.symbolByName.Unbundle, primitiveUnbundle],
+            [BasicBackend.symbolByName.And, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a&b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
+            [BasicBackend.symbolByName.Or, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a|b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
+            [BasicBackend.symbolByName.Xor, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a^b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
+            [BasicBackend.symbolByName.Addition, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a+b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
+            [BasicBackend.symbolByName.Subtraction, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a-b), BasicBackend.symbolByName.Minuend, BasicBackend.symbolByName.Subtrahend)],
+            [BasicBackend.symbolByName.Multiplication, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a*b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
+            [BasicBackend.symbolByName.Division, primitiveDivision],
+            [BasicBackend.symbolByName.Equal, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a==b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.NotEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a!=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.LessThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.LessEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.GreaterThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.GreaterEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
+            [BasicBackend.symbolByName.If, primitiveIf],
+        ]);
     }
 
-    log(symbols, message) {
-        const symbolToText = function(symbol) {
-            const data = this.ontology.getData(symbol);
-            return (data != undefined) ? data : '('+symbol+')';
-        }.bind(this);
-        const symbolsToText = [];
-        if(symbols instanceof Map)
-            for(const [key, value] of symbols)
-                symbolsToText.push(symbolToText(key)+'='+symbolToText(value));
-        else if(symbols instanceof Array || symbols instanceof Set)
-            for(const element of symbols)
-                symbolsToText.push(symbolToText(element));
-        else
-            symbolsToText.push(symbolToText(symbols));
-        this.logMessages.push('  '.repeat(this.stackHeight)+message+': '+symbolsToText.join(', '));
-    }
-
-    throwError(symbols, message) {
-        this.log(symbols, 'ERROR: '+message);
-        throw new Error(message);
-    }
-
-    throwWarning(symbols, message) {
-        this.log(symbols, 'WARNING: '+message);
-    }
-
-    pushStackFrame(entry, message) {
-        this.log(entry.symbol, message);
-        ++this.stackHeight;
-    }
-
-    popStackFrame(entry, message) {
-        this.log(entry.symbol, message);
-        --this.stackHeight;
-    }
-
-    llvmCode() {
+    getLlvmCode() {
         return this.llvmModule.serialize();
+    }
+
+    execute(inputOperands, isProgramEntry) {
+        const entry = {'inputOperands': inputOperands};
+        entry.operator = entry.inputOperands.get(BasicBackend.symbolByName.Operator);
+        entry.inputOperands = entry.inputOperands.sorted();
+        entry.hash = hashOfOperands(this, entry.inputOperands);
+        if(this.operatorInstanceByHash.has(entry.hash))
+            return this.operatorInstanceByHash.get(entry.hash);
+        entry.symbol = this.ontology.createSymbol(this.executionNamespaceId);
+        pushStackFrame(this, entry, 'Begin');
+        entry.outputOperands = new Map();
+        entry.aux = {
+            'llvmBasicBlock': new LLVMBasicBlock(),
+            'inputLlvmValues': operandsToLlvmValues(this, entry.inputOperands)
+        };
+        entry.aux.llvmFunctionParameters = Array.from(entry.aux.inputLlvmValues.values());
+        unbundleAndMixOperands(this, entry, 'input');
+        entry.inputOperands.delete(BasicBackend.symbolByName.Operator);
+        entry.inputOperandBundle = bundleOperands(this, entry.inputOperands);
+        entry.aux.inputLlvmValueBundle = buildLlvmBundle(this, entry.aux.llvmBasicBlock, Array.from(entry.aux.inputLlvmValues.values()));
+        this.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperatorInstance], true);
+        this.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.Operator, entry.operator], true);
+        this.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.InputOperandBundle, entry.inputOperandBundle], true);
+        this.operatorInstanceBySymbol.set(entry.symbol, entry);
+        this.operatorInstanceByHash.set(entry.hash, entry);
+        if(!entry.operator || entry.operator === BasicBackend.symbolByName.Void)
+            throwError(this, entry.symbol, 'Tried calling Void as Operator');
+        const primitive = this.primitiveLookupMap.get(entry.operator);
+        ((primitive) ? primitive : customOperator)(this, entry);
+        if(isProgramEntry) {
+            if(entry.aux)
+                throwError(this, entry.symbol, 'Encountered recursion cycle which could not be resolved');
+            if(entry.llvmFunction) {
+                delete entry.llvmFunction.linkage;
+                entry.llvmFunction.name = this.ontology.getData(entry.operator);
+            }
+        }
+        return entry;
     }
 
     createCarrier(destinationOperat, destinationOperandTag, sourceOperat, sourceOperandTag = false) {
@@ -216,16 +239,5 @@ export class CompilerContext {
         const symbol = this.ontology.createSymbol(this.programNamespaceId);
         this.ontology.setData(symbol, name);
         return symbol;
-    }
-
-    execute(inputs, exportFunction) {
-        const entry = execute(this, inputs);
-        if(entry.aux)
-            this.throwError(entry.symbol, 'Encountered recursion cycle which could not be resolved');
-        if(exportFunction && entry.llvmFunction) {
-            delete entry.llvmFunction.linkage;
-            entry.llvmFunction.name = this.ontology.getData(entry.operator);
-        }
-        return entry.outputOperands;
     }
 }

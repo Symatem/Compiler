@@ -2,7 +2,7 @@ import { LLVMStructureType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
 import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
-import { execute } from './execution.js';
+import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -40,7 +40,7 @@ export function collectDestinations(context, entry, destinationOperat) {
     for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat])) {
         const destinationOperandTag = context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag);
         if(carriers.has(destinationOperandTag))
-            context.throwError(destinationOperandTag, 'DestinationOperandTag collision detected');
+            throwError(context, destinationOperandTag, 'DestinationOperandTag collision detected');
         carriers.set(destinationOperandTag, triple[0]);
     }
     carriers = carriers.sorted();
@@ -52,7 +52,7 @@ export function collectDestinations(context, entry, destinationOperat) {
         if(sourceOperandTag === BasicBackend.symbolByName.Constant) {
             const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat);
             if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
-                context.throwError(carrier, 'Const carrier uses a TypedPlaceholder as source operand');
+                throwError(context, carrier, 'Const carrier uses a TypedPlaceholder as source operand');
             destinationOperand = sourceOperand;
         } else {
             ++referenceCount;
@@ -80,7 +80,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
         unusedOperandTags.delete(sourceOperandTag);
         let sourceOperand = sourceOperands.get(sourceOperandTag),
             sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag);
-        if(sourceOperandTag === BasicBackend.symbolByName.Operands) {
+        if(sourceOperandTag === BasicBackend.symbolByName.OperandBundle) {
             unusedOperandTags.clear();
             sourceOperand = sourceOperandBundle;
             sourceLlvmValue = sourceLlvmValueBundle;
@@ -94,7 +94,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
             destinationLlvmValues.delete(destinationOperandTag);
         if(!sourceOperand) {
             sourceOperand = BasicBackend.symbolByName.Void;
-            context.throwWarning(sourceOperandTag, 'Operand not found. Using Void as fallback');
+            throwWarning(context, sourceOperandTag, 'Operand not found. Using Void as fallback');
         }
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
         if(sourceLlvmValue)
@@ -111,7 +111,7 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
         }
     }
     if(unusedOperandTags.size > 0)
-        context.throwWarning(unusedOperandTags, 'Unused operand(s)');
+        throwWarning(context, unusedOperandTags, 'Unused operand(s)');
 }
 
 export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
@@ -143,15 +143,15 @@ export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValues, bundleLlv
 export function unbundleAndMixOperands(context, entry, direction) {
     const operands = entry[direction+'Operands'],
           llvmValues = entry.aux[direction+'LlvmValues'];
-    if(!operands.has(BasicBackend.symbolByName.Operands))
+    if(!operands.has(BasicBackend.symbolByName.OperandBundle))
         return;
-    const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.Operands)),
-          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.Operands);
-    operands.delete(BasicBackend.symbolByName.Operands);
-    llvmValues.delete(BasicBackend.symbolByName.Operands);
+    const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.OperandBundle)),
+          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.OperandBundle);
+    operands.delete(BasicBackend.symbolByName.OperandBundle);
+    llvmValues.delete(BasicBackend.symbolByName.OperandBundle);
     for(const [operandTag, operand] of bundleOperands)
         if(operands.has(operandTag))
-            context.throwError(operandTag, 'DestinationOperandTag collision detected');
+            throwError(context, operandTag, 'DestinationOperandTag collision detected');
         else
             operands.set(operandTag, operand);
     const bundleLlvmValues = operandsToLlvmValues(context, bundleOperands);
@@ -164,21 +164,21 @@ export function unbundleAndMixOperands(context, entry, direction) {
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
     const operator = destinationOperands.get(BasicBackend.symbolByName.Operator);
-    context.log([operation, operator], 'Operation');
+    log(context, [operation, operator], 'Operation');
     let instanceEntry;
     const operatorLlvmValue = destinationLlvmValues.has(BasicBackend.symbolByName.Operator);
     if(operatorLlvmValue) {
         // TODO
         if(operatorLlvmValue.type instanceof LLVMFunctionType) {
             // TODO LLVMFunctionType
-            context.throwError(operator, 'Calling LLVMFunctionType is not implemented yet');
+            throwError(context, operator, 'Calling LLVMFunctionType is not implemented yet');
         } else if(operatorLlvmValue.type == LLVMSymbolType) {
             // TODO
-            context.throwError(operator, 'Dynamic operator dispatching is not implemented yet');
+            throwError(context, operator, 'Dynamic operator dispatching is not implemented yet');
         } else
-            context.throwError(operator, 'Invalid dynamic operator');
+            throwError(context, operator, 'Invalid dynamic operator');
     }
-    instanceEntry = execute(context, destinationOperands);
+    instanceEntry = context.execute(destinationOperands);
     if(instanceEntry.aux && !instanceEntry.aux.ready) {
         let operationsBlockedByThis = instanceEntry.aux.operationsBlockedByThis.get(entry);
         if(!operationsBlockedByThis) {
@@ -196,7 +196,7 @@ export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destina
         const callInstruction = new LLVMCallInstruction(sourceLlvmValueBundle, instanceEntry.llvmFunction, Array.from(destinationLlvmValues.values()));
         llvmBasicBlock.instructions.splice(instructionIndex, 0, callInstruction);
     }
-    context.log(instanceEntry.outputOperands, 'Outputs');
+    log(context, instanceEntry.outputOperands, 'Outputs');
     return [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle];
 }
 
@@ -211,20 +211,20 @@ export function buildLLVMFunction(context, entry, returnValue, alwaysinline=true
 }
 
 export function finishExecution(context, entry) {
-    context.popStackFrame(entry, 'Done');
+    popStackFrame(context, entry, 'Done');
     if(entry.llvmFunction)
         context.llvmModule.functions.push(entry.llvmFunction);
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
     entry.outputOperandBundle = bundleOperands(context, entry.outputOperands);
-    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperands, entry.outputOperandBundle], true);
+    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperandBundle, entry.outputOperandBundle], true);
     if(operationsBlockedByThis)
         for(const [blockedEntry, operations] of operationsBlockedByThis) {
             for(const operation of operations) {
                 blockedEntry.aux.blockedOperations.delete(operation);
                 blockedEntry.aux.readyOperations.push(operation);
             }
-            context.pushStackFrame(blockedEntry, 'Resume');
+            pushStackFrame(context, blockedEntry, 'Resume');
             blockedEntry.aux.resume();
         }
 }
