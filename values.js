@@ -9,10 +9,10 @@ export const LLVMSymbolType = new LLVMStructureType([new LLVMIntegerType(32), ne
              LLVMVoidConstant = new LLVMLiteralConstant(new LLVMType('void'));
 
 export function bundleOperands(context, operands) {
-    const bundleSymbol = context.ontology.createSymbol(context.executionNamespaceId);
+    const bundleSymbol = context.ontology.createSymbol(context.namespaceId);
     context.ontology.setTriple([bundleSymbol, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.OperandBundle], true);
     for(const [operandTag, operand] of operands) {
-        const pairSymbol = context.ontology.createSymbol(context.executionNamespaceId);
+        const pairSymbol = context.ontology.createSymbol(context.namespaceId);
         context.ontology.setTriple([pairSymbol, BasicBackend.symbolByName.OperandTag, operandTag], true);
         context.ontology.setTriple([pairSymbol, BasicBackend.symbolByName.Operand, operand], true);
         context.ontology.setTriple([bundleSymbol, BasicBackend.symbolByName.Element, pairSymbol], true);
@@ -165,9 +165,9 @@ function convertToTypedPlaceholder(context, operand) {
           key = encoding+','+size;
     if(context.typedPlaceholderCache.has(key))
         return context.typedPlaceholderCache.get(key);
-    const typedPlaceholder = context.ontology.createSymbol(context.executionNamespaceId),
-          placeholderEncoding = context.ontology.createSymbol(context.executionNamespaceId),
-          slotSize = context.ontology.createSymbol(context.executionNamespaceId);
+    const typedPlaceholder = context.ontology.createSymbol(context.namespaceId),
+          placeholderEncoding = context.ontology.createSymbol(context.namespaceId),
+          slotSize = context.ontology.createSymbol(context.namespaceId);
     throwWarning(context, 'TypedPlaceholder construction is experimental');
     context.ontology.setData(slotSize, size);
     context.ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);

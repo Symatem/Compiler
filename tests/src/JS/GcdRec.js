@@ -1,33 +1,35 @@
-const [gcdRecOperator, gcdRecOperations] = context.createOperator(2),
-      [thenOperator, thenOperations] = context.createOperator(0),
-      [elseOperator, elseOperations] = context.createOperator(2);
+(function(program) {
+    const [gcdRecOperator, gcdRecOperations] = program.createOperator(2),
+          [thenOperator, thenOperations] = program.createOperator(0),
+          [elseOperator, elseOperations] = program.createOperator(2);
 
-context.ontology.setData(gcdRecOperator, 'GcdRec');
-context.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.Equal);
-context.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Input, gcdRecOperator, BasicBackend.symbolByName.OtherInput);
-context.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Comparand, BasicBackend.symbolByName.Zero);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.If);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Condition, gcdRecOperations[0], BasicBackend.symbolByName.Output);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Then, thenOperator);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Else, elseOperator);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Input, gcdRecOperator, BasicBackend.symbolByName.Input);
-context.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.OtherInput, gcdRecOperator, BasicBackend.symbolByName.OtherInput);
-context.createCarrier(gcdRecOperator, BasicBackend.symbolByName.Output, gcdRecOperations[1], BasicBackend.symbolByName.Output);
+    program.ontology.setData(gcdRecOperator, 'GcdRec');
+    program.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.Equal);
+    program.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Input, gcdRecOperator, BasicBackend.symbolByName.OtherInput);
+    program.createCarrier(gcdRecOperations[0], BasicBackend.symbolByName.Comparand, BasicBackend.symbolByName.Zero);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.If);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Condition, gcdRecOperations[0], BasicBackend.symbolByName.Output);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Then, thenOperator);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Else, elseOperator);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.Input, gcdRecOperator, BasicBackend.symbolByName.Input);
+    program.createCarrier(gcdRecOperations[1], BasicBackend.symbolByName.OtherInput, gcdRecOperator, BasicBackend.symbolByName.OtherInput);
+    program.createCarrier(gcdRecOperator, BasicBackend.symbolByName.Output, gcdRecOperations[1], BasicBackend.symbolByName.Output);
 
-context.ontology.setData(thenOperator, 'GcdRecThen');
-context.createCarrier(thenOperator, BasicBackend.symbolByName.Output, thenOperator, BasicBackend.symbolByName.Input);
+    program.ontology.setData(thenOperator, 'GcdRecThen');
+    program.createCarrier(thenOperator, BasicBackend.symbolByName.Output, thenOperator, BasicBackend.symbolByName.Input);
 
-context.ontology.setData(elseOperator, 'GcdRecElse');
-context.createCarrier(elseOperations[0], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.Division);
-context.createCarrier(elseOperations[0], BasicBackend.symbolByName.Dividend, elseOperator, BasicBackend.symbolByName.Input);
-context.createCarrier(elseOperations[0], BasicBackend.symbolByName.Divisor, elseOperator, BasicBackend.symbolByName.OtherInput);
-context.createCarrier(elseOperations[1], BasicBackend.symbolByName.Operator, gcdRecOperator);
-context.createCarrier(elseOperations[1], BasicBackend.symbolByName.Input, elseOperator, BasicBackend.symbolByName.OtherInput);
-context.createCarrier(elseOperations[1], BasicBackend.symbolByName.OtherInput, elseOperations[0], BasicBackend.symbolByName.Rest);
-context.createCarrier(elseOperator, BasicBackend.symbolByName.Output, elseOperations[1], BasicBackend.symbolByName.Output);
+    program.ontology.setData(elseOperator, 'GcdRecElse');
+    program.createCarrier(elseOperations[0], BasicBackend.symbolByName.Operator, BasicBackend.symbolByName.Division);
+    program.createCarrier(elseOperations[0], BasicBackend.symbolByName.Dividend, elseOperator, BasicBackend.symbolByName.Input);
+    program.createCarrier(elseOperations[0], BasicBackend.symbolByName.Divisor, elseOperator, BasicBackend.symbolByName.OtherInput);
+    program.createCarrier(elseOperations[1], BasicBackend.symbolByName.Operator, gcdRecOperator);
+    program.createCarrier(elseOperations[1], BasicBackend.symbolByName.Input, elseOperator, BasicBackend.symbolByName.OtherInput);
+    program.createCarrier(elseOperations[1], BasicBackend.symbolByName.OtherInput, elseOperations[0], BasicBackend.symbolByName.Rest);
+    program.createCarrier(elseOperator, BasicBackend.symbolByName.Output, elseOperations[1], BasicBackend.symbolByName.Output);
 
-const inputs = new Map();
-inputs.set(BasicBackend.symbolByName.Operator, gcdRecOperator);
-inputs.set(BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Natural32);
-inputs.set(BasicBackend.symbolByName.OtherInput, BasicBackend.symbolByName.Natural32);
-inputs;
+    const inputs = new Map();
+    inputs.set(BasicBackend.symbolByName.Operator, gcdRecOperator);
+    inputs.set(BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Natural32);
+    inputs.set(BasicBackend.symbolByName.OtherInput, BasicBackend.symbolByName.Natural32);
+    return inputs;
+})

@@ -4,6 +4,7 @@ import { LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInst
 import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues, llvmTypeAndTypedPlaceholderOfEncoding, getLlvmValue } from './values.js';
 import { copyAndRenameOperand, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
 import { throwError, throwWarning, popStackFrame } from './stackTrace.js';
+import { llvmLookupMaps } from './symbols.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
@@ -41,7 +42,7 @@ export function primitiveDivision(context, entry) {
             throwError(context, [inputA, inputB], 'Type mismatch');
         quotientOperand = restOperand = isPlaceholderA ? inputA : inputB;
         const encoding = context.ontology.getSolitary(context.ontology.getSolitary(quotientOperand, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default),
-              prefix = context.llvmLookupMaps.divisionPrefix.get(encoding),
+              prefix = llvmLookupMaps.divisionPrefix.get(encoding),
               divOperation = new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+'div', inputALlvmValue, inputBLlvmValue),
               remOperation = new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+'rem', inputALlvmValue, inputBLlvmValue);
         entry.aux.llvmBasicBlock.instructions.push(divOperation);
@@ -55,8 +56,8 @@ export function primitiveDivision(context, entry) {
     } else {
         const dividend = context.ontology.getData(inputA),
               divisor = context.ontology.getData(inputB);
-        quotientOperand = context.ontology.createSymbol(context.executionNamespaceId);
-        restOperand = context.ontology.createSymbol(context.executionNamespaceId);
+        quotientOperand = context.ontology.createSymbol(context.namespaceId);
+        restOperand = context.ontology.createSymbol(context.namespaceId);
         context.ontology.setData(quotientOperand, dividend/divisor);
         context.ontology.setData(restOperand, dividend%divisor);
     }
@@ -81,7 +82,7 @@ export function primitiveBinaryInstruction(compileCallback, interpretCallback, i
         inputBOperand = entry.inputOperands.get(inputBTag);
         inputAEncoding = context.ontology.getSolitary(inputAOperand, BasicBackend.symbolByName.Encoding);
         inputBEncoding = context.ontology.getSolitary(inputBOperand, BasicBackend.symbolByName.Encoding);
-        outputOperand = context.ontology.createSymbol(context.executionNamespaceId);
+        outputOperand = context.ontology.createSymbol(context.namespaceId);
         context.ontology.setData(outputOperand, interpretCallback(context.ontology.getData(inputAOperand), context.ontology.getData(inputBOperand)));
     }
     if(inputAEncoding !== inputBEncoding)
@@ -106,17 +107,17 @@ export function compileBinaryArithmetic(context, entry, output, encoding, inputA
     const prefix = (encoding === BasicBackend.symbolByName.IEEE754) ? 'f' : '';
     return [
         output,
-        new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+context.llvmLookupMaps.binaryArithmetic.get(entry.operator), inputALlvmValue, inputBLlvmValue)
+        new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+llvmLookupMaps.binaryArithmetic.get(entry.operator), inputALlvmValue, inputBLlvmValue)
     ];
 }
 
 export function compileBinaryComparison(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
     const prefix = ((encoding === BasicBackend.symbolByName.BinaryNumber || encoding === BasicBackend.symbolByName.TwosComplement) &&
                     (entry.operator === BasicBackend.symbolByName.Equal || entry.operator === BasicBackend.symbolByName.NotEqual))
-                    ? '' : context.llvmLookupMaps.binaryComparisonPrefix.get(encoding);
+                    ? '' : llvmLookupMaps.binaryComparisonPrefix.get(encoding);
     return [
         BasicBackend.symbolByName.Boolean,
-        new LLVMCompareInstruction(new LLVMValue(new LLVMIntegerType(1)), prefix+context.llvmLookupMaps.binaryComparison.get(entry.operator), inputALlvmValue, inputBLlvmValue)
+        new LLVMCompareInstruction(new LLVMValue(new LLVMIntegerType(1)), prefix+llvmLookupMaps.binaryComparison.get(entry.operator), inputALlvmValue, inputBLlvmValue)
     ];
 }
 
@@ -204,46 +205,5 @@ export function primitiveIf(context, entry) {
         }
         finishExecution(context, entry);
     };
-    entry.aux.resume();
-}
-
-export function customOperator(context, entry) {
-    entry.aux.operatDestinationLlvmValues = new Map();
-    entry.aux.operatDestinationOperands = new Map();
-    entry.aux.operationsBlockedByThis = new Map();
-    entry.aux.unsatisfiedOperations = new Map();
-    entry.aux.readyOperations = [];
-    entry.aux.blockedOperations = new Set();
-    entry.aux.resume = function() {
-        while(entry.aux.readyOperations.length > 0) {
-            const operation = entry.aux.readyOperations.shift(),
-                  [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
-                context,
-                entry.aux.llvmBasicBlock,
-                entry,
-                operation,
-                entry.aux.operatDestinationOperands.get(operation),
-                entry.aux.operatDestinationLlvmValues.get(operation)
-            );
-            if(sourceLlvmValues)
-                propagateSources(context, entry, operation, instanceEntry.outputOperands, sourceLlvmValues, entry.outputOperandBundle, sourceLlvmValueBundle);
-        }
-        if(entry.aux.blockedOperations.size > 0) {
-            popStackFrame(context, entry, 'Blocked');
-            return;
-        }
-        if(entry.aux.unsatisfiedOperations.size > 0)
-            throwError(context, entry.symbol, 'Topological sort failed: Operations are not a DAG');
-        unbundleAndMixOperands(context, entry, 'output');
-        if(entry.aux.llvmBasicBlock.instructions.length > 0 || entry.aux.outputLlvmValues.size > 0) {
-            const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
-            buildLLVMFunction(context, entry, returnLlvmValue, false);
-        }
-        finishExecution(context, entry);
-    };
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
-        collectDestinations(context, entry, triple[2]);
-    collectDestinations(context, entry, entry.operator);
-    propagateSources(context, entry, entry.operator, entry.inputOperands, entry.aux.inputLlvmValues, entry.inputOperandBundle, entry.aux.inputLlvmValueBundle);
     entry.aux.resume();
 }

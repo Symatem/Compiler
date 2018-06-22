@@ -114,6 +114,47 @@ export function propagateSources(context, entry, sourceOperat, sourceOperands, s
         throwWarning(context, unusedOperandTags, 'Unused operand(s)');
 }
 
+export function customOperator(context, entry) {
+    entry.aux.operatDestinationLlvmValues = new Map();
+    entry.aux.operatDestinationOperands = new Map();
+    entry.aux.operationsBlockedByThis = new Map();
+    entry.aux.unsatisfiedOperations = new Map();
+    entry.aux.readyOperations = [];
+    entry.aux.blockedOperations = new Set();
+    entry.aux.resume = function() {
+        while(entry.aux.readyOperations.length > 0) {
+            const operation = entry.aux.readyOperations.shift(),
+                  [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
+                context,
+                entry.aux.llvmBasicBlock,
+                entry,
+                operation,
+                entry.aux.operatDestinationOperands.get(operation),
+                entry.aux.operatDestinationLlvmValues.get(operation)
+            );
+            if(sourceLlvmValues)
+                propagateSources(context, entry, operation, instanceEntry.outputOperands, sourceLlvmValues, entry.outputOperandBundle, sourceLlvmValueBundle);
+        }
+        if(entry.aux.blockedOperations.size > 0) {
+            popStackFrame(context, entry, 'Blocked');
+            return;
+        }
+        if(entry.aux.unsatisfiedOperations.size > 0)
+            throwError(context, entry.symbol, 'Topological sort failed: Operations are not a DAG');
+        unbundleAndMixOperands(context, entry, 'output');
+        if(entry.aux.llvmBasicBlock.instructions.length > 0 || entry.aux.outputLlvmValues.size > 0) {
+            const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
+            buildLLVMFunction(context, entry, returnLlvmValue, false);
+        }
+        finishExecution(context, entry);
+    };
+    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
+        collectDestinations(context, entry, triple[2]);
+    collectDestinations(context, entry, entry.operator);
+    propagateSources(context, entry, entry.operator, entry.inputOperands, entry.aux.inputLlvmValues, entry.inputOperandBundle, entry.aux.inputLlvmValueBundle);
+    entry.aux.resume();
+}
+
 export function buildLlvmBundle(context, llvmBasicBlock, llvmValues) {
     if(llvmValues.length < 2)
         return (llvmValues.length === 1) ? llvmValues[0] : LLVMVoidConstant;
