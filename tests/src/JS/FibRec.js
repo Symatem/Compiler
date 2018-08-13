@@ -1,4 +1,4 @@
-(function(program) {
+function(program) {
     const [fibRecOperator, fibRecOperations] = program.createOperator(2),
           [thenOperator, thenOperations] = program.createOperator(0),
           [elseOperator, elseOperations] = program.createOperator(5);
@@ -37,4 +37,4 @@
     inputs.set(BasicBackend.symbolByName.Operator, fibRecOperator);
     inputs.set(BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Natural32);
     return inputs;
-})
+}

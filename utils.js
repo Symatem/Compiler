@@ -1,6 +1,6 @@
-import { LLVMStructureType } from './LLVM/Type.js';
+import { LLVMStructureType, LLVMPointerType, LLVMIntegerType } from './LLVM/Type.js';
 import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
-import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction } from './LLVM/Instruction.js';
+import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction, LLVMCastInstruction } from './LLVM/Instruction.js';
 import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
 import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
@@ -268,4 +268,13 @@ export function finishExecution(context, entry) {
             pushStackFrame(context, blockedEntry, 'Resume');
             blockedEntry.aux.resume();
         }
+}
+
+export function pointerCast(addressLlvmValue, llymType) {
+    if(!(addressLlvmValue.type instanceof LLVMIntegerType) && !(addressLlvmValue.type instanceof LLVMPointerType))
+        throwError(context, 'Address is not a natural number or pointer');
+    const pointerLlvmValue = new LLVMValue(new LLVMPointerType(llymType));
+    return (addressLlvmValue.type instanceof LLVMIntegerType)
+        ? new LLVMCastInstruction(pointerLlvmValue, 'inttoptr', addressLlvmValue)
+        : new LLVMCastInstruction(pointerLlvmValue, 'bitcast', addressLlvmValue);
 }

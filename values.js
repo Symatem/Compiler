@@ -51,17 +51,17 @@ function llvmTypeOfEncoding(context, encoding, length) {
     else if(slotSize !== BasicBackend.symbolByName.Void)
         slotSize = context.ontology.getData(slotSize);
 
-    const defaultEncoding = context.ontology.getSolitary(encoding, BasicBackend.symbolByName.Default);
+    const defaultEncoding = context.ontology.getSolitary(encoding, BasicBackend.symbolByName.Default),
+          defaultDataType = llvmTypeOfEncoding(context, defaultEncoding, slotSize);
 
     let count = context.ontology.getSolitary(encoding, BasicBackend.symbolByName.Count);
     if(count === BasicBackend.symbolByName.Dynamic)
         throwError(context, encoding, 'LLVM does not support a Dynamic Count');
     else if(count === BasicBackend.symbolByName.Void)
         return new LLVMPointerType(defaultDataType);
-
     count = context.ontology.getData(count);
+
     if(defaultEncoding !== BasicBackend.symbolByName.Void) {
-        const defaultDataType = llvmTypeOfEncoding(context, defaultEncoding, slotSize);
         if(context.ontology.getTriple([encoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Vector]))
             return new LLVMVectorType(count, defaultDataType);
         else if(count === 1)

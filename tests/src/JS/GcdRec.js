@@ -1,4 +1,4 @@
-(function(program) {
+function(program) {
     const [gcdRecOperator, gcdRecOperations] = program.createOperator(2),
           [thenOperator, thenOperations] = program.createOperator(0),
           [elseOperator, elseOperations] = program.createOperator(2);
@@ -32,4 +32,4 @@
     inputs.set(BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Natural32);
     inputs.set(BasicBackend.symbolByName.OtherInput, BasicBackend.symbolByName.Natural32);
     return inputs;
-})
+}

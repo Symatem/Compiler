@@ -1,8 +1,8 @@
 import { LLVMIntegerType, LLVMPointerType } from './LLVM/Type.js';
 import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.js';
-import { LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction } from './LLVM/Instruction.js';
+import { LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction, LLVMAllocaInstruction, LLVMCastInstruction, LLVMLoadInstruction, LLVMStoreInstruction } from './LLVM/Instruction.js';
 import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues, llvmTypeAndTypedPlaceholderOfEncoding, getLlvmValue } from './values.js';
-import { copyAndRenameOperand, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution } from './utils.js';
+import { copyAndRenameOperand, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution, pointerCast } from './utils.js';
 import { throwError, throwWarning, popStackFrame } from './stackTrace.js';
 import { llvmLookupMaps } from './symbols.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
@@ -26,6 +26,47 @@ export function primitiveUnbundle(context, entry) {
     entry.outputOperands = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.Input));
     const outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
     buildLLVMFunction(context, entry, outputLlvmValue);
+    finishExecution(context, entry);
+}
+
+export function primitiveStackAllocate(context, entry) {
+    const [inputOperand, inputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
+    if(!(inputLlvmValue.type instanceof LLVMIntegerType))
+        throwError(context, 'Input is not a natural number');
+    const llymType = new LLVMIntegerType(32),
+          outputOperand = BasicBackend.symbolByName.Pointer,
+          memoryOperation = new LLVMAllocaInstruction(new LLVMValue(new LLVMPointerType(new LLVMIntegerType(8))), inputLlvmValue);
+          // pointerOperation = new LLVMCastInstruction(new LLVMValue(llymType), 'ptrtoint', memoryOperation.result);
+    entry.aux.llvmBasicBlock.instructions.push(memoryOperation);
+    // entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    buildLLVMFunction(context, entry, memoryOperation.result);
+    finishExecution(context, entry);
+}
+
+export function primitiveLoad(context, entry) {
+    const [addressOperand, addressLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
+          dstPlaceholderEncoding = entry.inputOperands.get(BasicBackend.symbolByName.PlaceholderEncoding),
+          dstEncoding = context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.Default),
+          dstSize = context.ontology.getData(context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.SlotSize)),
+          [llymType, outputOperand] = llvmTypeAndTypedPlaceholderOfEncoding(context, dstEncoding, dstSize),
+          pointerOperation = pointerCast(addressLlvmValue, llymType),
+          memoryOperation = new LLVMLoadInstruction(new LLVMValue(llymType), pointerOperation.result);
+    entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
+    entry.aux.llvmBasicBlock.instructions.push(memoryOperation);
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    buildLLVMFunction(context, entry, memoryOperation.result);
+    finishExecution(context, entry);
+}
+
+export function primitiveStore(context, entry) {
+    const [addressOperand, addressLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
+          [inputOperand, inputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues),
+          pointerOperation = pointerCast(addressLlvmValue, inputLlvmValue.type),
+          memoryOperation = new LLVMStoreInstruction(LLVMVoidConstant, inputLlvmValue, pointerOperation.result);
+    entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
+    entry.aux.llvmBasicBlock.instructions.push(memoryOperation);
+    buildLLVMFunction(context, entry);
     finishExecution(context, entry);
 }
 
