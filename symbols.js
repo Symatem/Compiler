@@ -1,6 +1,6 @@
 import { primitiveDeferEvaluation, primitiveBundle, primitiveUnbundle,
-primitiveStackAllocate, primitiveLoad, primitiveStore,
-primitiveDivision, primitiveBinaryInstruction, compileBinaryArithmetic, compileBinaryComparison,
+primitiveStackAllocate, primitiveLoad, primitiveStore, primitiveConversion,
+primitiveDivision, primitiveBinaryInstruction, compileBitShift, compileBinaryArithmetic, compileBinaryComparison,
 primitiveIf } from './primitives.js';
 import BasicBackend from '../SymatemJS/BasicBackend.js';
 
@@ -37,6 +37,7 @@ export function initializeOntology(ontology) {
         'Eight',
         'Sixteen',
         'ThirtyTwo',
+        'SixtyFour',
         'Vector',
         'Pointer',
         'Symbol',
@@ -44,6 +45,9 @@ export function initializeOntology(ontology) {
         'Natural32',
         'Integer32',
         'Float32',
+        'Natural64',
+        'Integer64',
+        'Float64',
 
         'Input',
         'OtherInput',
@@ -57,7 +61,12 @@ export function initializeOntology(ontology) {
         'Load',
         'Store',
         'Address',
+        'NumericConversion',
+        'Reinterpretation',
 
+        'MultiplyByPowerOfTwo',
+        'DivideByPowerOfTwo',
+        'Exponent',
         'And',
         'Or',
         'Xor',
@@ -93,6 +102,7 @@ export function initializeOntology(ontology) {
     ontology.setData(BasicBackend.symbolByName.Eight, 8);
     ontology.setData(BasicBackend.symbolByName.Sixteen, 16);
     ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
+    ontology.setData(BasicBackend.symbolByName.SixtyFour, 64);
     function setupTypedPlaceholder(typedPlaceholder, size, encoding, count=BasicBackend.symbolByName.One) {
         const placeholderEncoding = ontology.createSymbol(namespaceId);
         ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
@@ -110,6 +120,9 @@ export function initializeOntology(ontology) {
     setupTypedPlaceholder(BasicBackend.symbolByName.Natural32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber);
     setupTypedPlaceholder(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
     setupTypedPlaceholder(BasicBackend.symbolByName.Float32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.IEEE754);
+    setupTypedPlaceholder(BasicBackend.symbolByName.Natural64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.BinaryNumber);
+    setupTypedPlaceholder(BasicBackend.symbolByName.Integer64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.TwosComplement);
+    setupTypedPlaceholder(BasicBackend.symbolByName.Float64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.IEEE754);
     llvmLookupMaps = {
         divisionPrefix: new Map([
             [BasicBackend.symbolByName.BinaryNumber, 'u'],
@@ -145,6 +158,10 @@ export function initializeOntology(ontology) {
         [BasicBackend.symbolByName.StackAllocate, primitiveStackAllocate],
         [BasicBackend.symbolByName.Load, primitiveLoad],
         [BasicBackend.symbolByName.Store, primitiveStore],
+        [BasicBackend.symbolByName.NumericConversion, primitiveConversion.bind(undefined, true)],
+        [BasicBackend.symbolByName.Reinterpretation, primitiveConversion.bind(undefined, false)],
+        [BasicBackend.symbolByName.MultiplyByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a<<b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Exponent)],
+        [BasicBackend.symbolByName.DivideByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a>>b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Exponent)],
         [BasicBackend.symbolByName.And, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a&b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
         [BasicBackend.symbolByName.Or, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a|b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
         [BasicBackend.symbolByName.Xor, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a^b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],

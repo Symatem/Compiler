@@ -70,6 +70,58 @@ export function primitiveStore(context, entry) {
     finishExecution(context, entry);
 }
 
+export function primitiveConversion(numeric, context, entry) {
+    const inputOperand = entry.inputOperands.get(BasicBackend.symbolByName.Input),
+          dstPlaceholderEncoding = entry.inputOperands.get(BasicBackend.symbolByName.PlaceholderEncoding),
+          dstEncoding = context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.Default),
+          dstSize = context.ontology.getData(context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.SlotSize)),
+          inputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
+    let outputOperand = inputOperand, srcEncoding, srcSize;
+    if(inputLlvmValue) {
+        const srcPlaceholderEncoding = context.ontology.getSolitary(inputOperand, BasicBackend.symbolByName.PlaceholderEncoding);
+        srcEncoding = context.ontology.getSolitary(srcPlaceholderEncoding, BasicBackend.symbolByName.Default);
+        srcSize = context.ontology.getData(context.ontology.getSolitary(srcPlaceholderEncoding, BasicBackend.symbolByName.SlotSize));
+    } else {
+        srcEncoding = context.ontology.getSolitary(inputOperand, BasicBackend.symbolByName.Encoding);
+        srcSize = context.ontology.getLength(inputOperand);
+    }
+    if(!numeric && srcSize != dstSize)
+        throwError(context, 'PlaceholderEncoding SlotSize mismatch');
+    if(srcEncoding != dstEncoding || srcSize != dstSize) {
+        if(inputLlvmValue) {
+            let llymType, kind = 'bitcast';
+            [llymType, outputOperand] = llvmTypeAndTypedPlaceholderOfEncoding(context, dstEncoding, dstSize);
+            if(numeric) {
+                if(srcEncoding === BasicBackend.symbolByName.IEEE754) {
+                    kind = (dstEncoding === BasicBackend.symbolByName.IEEE754)
+                        ? ((srcSize > dstSize) ? 'fptrunc' : 'fpext')
+                        : ((dstEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'fptoui' : 'fptosi');
+                } else {
+                    if(dstEncoding === BasicBackend.symbolByName.IEEE754)
+                        kind = (srcEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'uitofp' : 'sitofp';
+                    else if(srcSize > dstSize)
+                        kind = 'trunc';
+                    else
+                        kind = (srcEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'zext' : 'sext';
+                }
+            }
+            const operation = new LLVMCastInstruction(new LLVMValue(llymType), kind, inputLlvmValue);
+            entry.aux.llvmBasicBlock.instructions.push(operation);
+            buildLLVMFunction(context, entry, operation.result);
+        } else {
+            outputOperand = context.ontology.createSymbol(context.namespaceId);
+            const dataBytes = (numeric)
+                ? context.ontology.encodeBinary(dstEncoding, context.ontology.getData(inputOperand))
+                : context.ontology.getRawData(inputOperand);
+            context.ontology.setSolitary([outputOperand, symbolByName.Encoding, dstEncoding]);
+            context.ontology.setRawData(outputOperand, dataBytes, dstSize);
+        }
+    } else if(inputLlvmValue)
+        buildLLVMFunction(context, entry, inputLlvmValue);
+    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    finishExecution(context, entry);
+}
+
 export function primitiveDivision(context, entry) {
     const inputA = entry.inputOperands.get(BasicBackend.symbolByName.Dividend),
           inputB = entry.inputOperands.get(BasicBackend.symbolByName.Divisor),
@@ -126,22 +178,34 @@ export function primitiveBinaryInstruction(compileCallback, interpretCallback, i
         outputOperand = context.ontology.createSymbol(context.namespaceId);
         context.ontology.setData(outputOperand, interpretCallback(context.ontology.getData(inputAOperand), context.ontology.getData(inputBOperand)));
     }
-    if(inputAEncoding !== inputBEncoding)
+    if(entry.operator === BasicBackend.symbolByName.MultiplyByPowerOfTwo ||
+       entry.operator === BasicBackend.symbolByName.DivideByPowerOfTwo) {
+        if(inputBEncoding !== BasicBackend.symbolByName.BinaryNumber)
+            throwError(context, inputBOperand, 'Exponent is not a natural number');
+    } else if(inputAEncoding !== inputBEncoding)
         throwError(context, [inputAOperand, inputBOperand], 'Type mismatch');
     switch(entry.operator) {
         case BasicBackend.symbolByName.MultiplyByPowerOfTwo:
         case BasicBackend.symbolByName.DivideByPowerOfTwo:
-            if(inputBEncoding !== BasicBackend.symbolByName.BinaryNumber)
-                throwError(context, 'Exponent is not a natural number');
         case BasicBackend.symbolByName.And:
         case BasicBackend.symbolByName.Or:
         case BasicBackend.symbolByName.Xor:
             if(inputAEncoding === BasicBackend.symbolByName.IEEE754)
-                throwError(context, 'IEEE754 not supported by bitwise operations');
+                throwError(context, inputAOperand, 'IEEE754 not supported by bitwise operations');
             break;
     }
     entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
     finishExecution(context, entry);
+}
+
+export function compileBitShift(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
+    const kind = (entry.operator === BasicBackend.symbolByName.MultiplyByPowerOfTwo)
+        ? 'shl'
+        : ((encoding === BasicBackend.symbolByName.BinaryNumber) ? 'lshr': 'ashr');
+    return [
+        output,
+        new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), kind, inputALlvmValue, inputBLlvmValue)
+    ];
 }
 
 export function compileBinaryArithmetic(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
