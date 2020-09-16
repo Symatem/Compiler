@@ -3,28 +3,28 @@ import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction, LLVMCastInstruction } from './LLVM/Instruction.js';
 import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
 import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.js';
-import BasicBackend from '../SymatemJS/BasicBackend.js';
+import { Utils, SymbolInternals } from '../SymatemJS/SymatemJS.mjs';
 
 
 
 export function hashOfOperands(context, operands) {
     let i = 0, dataLength = operands.size*32*5;
     for(const [operandTag, operand] of operands)
-        dataLength += Math.ceil(context.ontology.getLength(operand)/8)*8;
+        dataLength += Math.ceil(context.backend.getLength(operand)/8)*8;
     const dataBytes = new Uint8Array(Math.ceil(dataLength/8)),
           view = new DataView(dataBytes.buffer);
     for(const [operandTag, operand] of operands) {
-        const operandDataBytes = context.ontology.getRawData(operand);
-        view.setUint32(i, BasicBackend.namespaceOfSymbol(operandTag), true);
-        view.setUint32(i+4, BasicBackend.identityOfSymbol(operandTag), true);
-        view.setUint32(i+8, BasicBackend.namespaceOfSymbol(operand), true);
-        view.setUint32(i+12, BasicBackend.identityOfSymbol(operand), true);
+        const operandDataBytes = context.backend.getRawData(operand);
+        view.setUint32(i, SymbolInternals.namespaceOfSymbol(operandTag), true);
+        view.setUint32(i+4, SymbolInternals.identityOfSymbol(operandTag), true);
+        view.setUint32(i+8, SymbolInternals.namespaceOfSymbol(operand), true);
+        view.setUint32(i+12, SymbolInternals.identityOfSymbol(operand), true);
         view.setUint32(i+16, operandDataBytes.byteLength, true);
         i += 20;
         dataBytes.set(operandDataBytes, i);
         i += operandDataBytes.byteLength;
     }
-    return view.djb2Hash();
+    return Utils.encodeBigInt(Utils.blake2s(8, dataBytes));
 }
 
 export function copyAndRenameOperand(destinationOperands, destinationLlvmValues, entry, dstOperandTag, srcOperandTag) {
@@ -37,21 +37,21 @@ export function copyAndRenameOperand(destinationOperands, destinationLlvmValues,
 export function collectDestinations(context, entry, destinationOperat) {
     let carriers = new Map(),
         referenceCount = 0;
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.DestinationOperat, destinationOperat])) {
-        const destinationOperandTag = context.ontology.getSolitary(triple[0], BasicBackend.symbolByName.DestinationOperandTag);
+    for(const triple of context.backend.queryTriples(context.backend.queryMasks.VMM, [context.backend.symbolByName.Void, context.backend.symbolByName.DestinationOperat, destinationOperat])) {
+        const destinationOperandTag = context.backend.getPairOptionally(triple[0], context.backend.symbolByName.DestinationOperandTag);
         if(carriers.has(destinationOperandTag))
             throwError(context, destinationOperandTag, 'DestinationOperandTag collision detected');
         carriers.set(destinationOperandTag, triple[0]);
     }
-    carriers = carriers.sorted();
+    carriers = Utils.sorted(carriers);
     const destinationOperands = (destinationOperat === entry.operator) ? entry.outputOperands : new Map(),
           destinationLlvmValues = new Map();
     for(const [destinationOperandTag, carrier] of carriers) {
         let destinationOperand;
-        const sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
-        if(sourceOperandTag === BasicBackend.symbolByName.Constant) {
-            const sourceOperand = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperat);
-            if(context.ontology.getTriple([sourceOperand, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder]))
+        const sourceOperandTag = context.backend.getPairOptionally(carrier, context.backend.symbolByName.SourceOperandTag);
+        if(sourceOperandTag === context.backend.symbolByName.Constant) {
+            const sourceOperand = context.backend.getPairOptionally(carrier, context.backend.symbolByName.SourceOperat);
+            if(context.backend.getTriple([sourceOperand, context.backend.symbolByName.Type, context.backend.symbolByName.TypedPlaceholder]))
                 throwError(context, carrier, 'Const carrier uses a TypedPlaceholder as source operand');
             destinationOperand = sourceOperand;
         } else {
@@ -72,28 +72,28 @@ export function collectDestinations(context, entry, destinationOperat) {
 
 export function propagateSources(context, entry, sourceOperat, sourceOperands, sourceLlvmValues, sourceOperandBundle, sourceLlvmValueBundle) {
     const unusedOperandTags = new Set(sourceOperands.keys());
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.VMM, [BasicBackend.symbolByName.Void, BasicBackend.symbolByName.SourceOperat, sourceOperat])) {
+    for(const triple of context.backend.queryTriples(context.backend.queryMasks.VMM, [context.backend.symbolByName.Void, context.backend.symbolByName.SourceOperat, sourceOperat])) {
         const carrier = triple[0],
-              sourceOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.SourceOperandTag);
-        if(sourceOperandTag === BasicBackend.symbolByName.Constant)
+              sourceOperandTag = context.backend.getPairOptionally(carrier, context.backend.symbolByName.SourceOperandTag);
+        if(sourceOperandTag === context.backend.symbolByName.Constant)
             continue;
         unusedOperandTags.delete(sourceOperandTag);
         let sourceOperand = sourceOperands.get(sourceOperandTag),
             sourceLlvmValue = sourceLlvmValues.get(sourceOperandTag);
-        if(sourceOperandTag === BasicBackend.symbolByName.OperandBundle) {
+        if(sourceOperandTag === context.backend.symbolByName.OperandBundle) {
             unusedOperandTags.clear();
             sourceOperand = sourceOperandBundle;
             sourceLlvmValue = sourceLlvmValueBundle;
         }
-        const destinationOperandTag = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperandTag),
-              destinationOperat = context.ontology.getSolitary(carrier, BasicBackend.symbolByName.DestinationOperat),
+        const destinationOperandTag = context.backend.getPairOptionally(carrier, context.backend.symbolByName.DestinationOperandTag),
+              destinationOperat = context.backend.getPairOptionally(carrier, context.backend.symbolByName.DestinationOperat),
               destinationLlvmValues = entry.aux.operatDestinationLlvmValues.get(destinationOperat);
         if(sourceOperand && sourceLlvmValue)
             destinationLlvmValues.set(destinationOperandTag, sourceLlvmValue);
         else
             destinationLlvmValues.delete(destinationOperandTag);
         if(!sourceOperand) {
-            sourceOperand = BasicBackend.symbolByName.Void;
+            sourceOperand = context.backend.symbolByName.Void;
             throwWarning(context, sourceOperandTag, 'Operand not found. Using Void as fallback');
         }
         entry.aux.operatDestinationOperands.get(destinationOperat).set(destinationOperandTag, sourceOperand);
@@ -148,7 +148,7 @@ export function customOperator(context, entry) {
         }
         finishExecution(context, entry);
     };
-    for(const triple of context.ontology.queryTriples(BasicBackend.queryMask.MMV, [entry.operator, BasicBackend.symbolByName.Operation, BasicBackend.symbolByName.Void]))
+    for(const triple of context.backend.queryTriples(context.backend.queryMasks.MMV, [entry.operator, context.backend.symbolByName.Operation, context.backend.symbolByName.Void]))
         collectDestinations(context, entry, triple[2]);
     collectDestinations(context, entry, entry.operator);
     propagateSources(context, entry, entry.operator, entry.inputOperands, entry.aux.inputLlvmValues, entry.inputOperandBundle, entry.aux.inputLlvmValueBundle);
@@ -184,12 +184,12 @@ export function buildLlvmUnbundle(context, llvmBasicBlock, llvmValues, bundleLlv
 export function unbundleAndMixOperands(context, entry, direction) {
     const operands = entry[direction+'Operands'],
           llvmValues = entry.aux[direction+'LlvmValues'];
-    if(!operands.has(BasicBackend.symbolByName.OperandBundle))
+    if(!operands.has(context.backend.symbolByName.OperandBundle))
         return;
-    const bundleOperands = unbundleOperands(context, operands.get(BasicBackend.symbolByName.OperandBundle)),
-          bundleLlvmValue = llvmValues.get(BasicBackend.symbolByName.OperandBundle);
-    operands.delete(BasicBackend.symbolByName.OperandBundle);
-    llvmValues.delete(BasicBackend.symbolByName.OperandBundle);
+    const bundleOperands = unbundleOperands(context, operands.get(context.backend.symbolByName.OperandBundle)),
+          bundleLlvmValue = llvmValues.get(context.backend.symbolByName.OperandBundle);
+    operands.delete(context.backend.symbolByName.OperandBundle);
+    llvmValues.delete(context.backend.symbolByName.OperandBundle);
     for(const [operandTag, operand] of bundleOperands)
         if(operands.has(operandTag))
             throwError(context, operandTag, 'DestinationOperandTag collision detected');
@@ -199,15 +199,15 @@ export function unbundleAndMixOperands(context, entry, direction) {
     buildLlvmUnbundle(context, entry.aux.llvmBasicBlock, Array.from(bundleLlvmValues.values()), bundleLlvmValue);
     for(const [operandTag, llvmValue] of bundleLlvmValues)
         llvmValues.set(operandTag, llvmValue);
-    entry[direction+'Operands'] = operands.sorted();
-    entry.aux[direction+'LlvmValues'] = llvmValues.sorted();
+    entry[direction+'Operands'] = Utils.sorted(operands);
+    entry.aux[direction+'LlvmValues'] = Utils.sorted(llvmValues);
 }
 
 export function buildLlvmCall(context, llvmBasicBlock, entry, operation, destinationOperands, destinationLlvmValues) {
-    const operator = destinationOperands.get(BasicBackend.symbolByName.Operator);
+    const operator = destinationOperands.get(context.backend.symbolByName.Operator);
     log(context, [operation, operator], 'Operation');
     let instanceEntry;
-    const operatorLlvmValue = destinationLlvmValues.has(BasicBackend.symbolByName.Operator);
+    const operatorLlvmValue = destinationLlvmValues.has(context.backend.symbolByName.Operator);
     if(operatorLlvmValue) {
         // TODO
         if(operatorLlvmValue.type instanceof LLVMFunctionType) {
@@ -258,7 +258,7 @@ export function finishExecution(context, entry) {
     const operationsBlockedByThis = entry.aux.operationsBlockedByThis;
     delete entry.aux;
     entry.outputOperandBundle = bundleOperands(context, entry.outputOperands);
-    context.ontology.setTriple([entry.symbol, BasicBackend.symbolByName.OutputOperandBundle, entry.outputOperandBundle], true);
+    context.backend.setTriple([entry.symbol, context.backend.symbolByName.OutputOperandBundle, entry.outputOperandBundle], true);
     if(operationsBlockedByThis)
         for(const [blockedEntry, operations] of operationsBlockedByThis) {
             for(const operation of operations) {

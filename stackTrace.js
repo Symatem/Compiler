@@ -1,6 +1,19 @@
+function repeatString(pattern, count) {
+    if(count < 1)
+        return '';
+    let result = '';
+    while(count > 1) {
+        if(count & 1)
+            result += pattern;
+        count >>= 1;
+        pattern += pattern;
+    }
+    return result+pattern;
+}
+
 export function log(context, symbols, message) {
     function symbolToText(symbol) {
-        const data = context.ontology.getData(symbol);
+        const data = context.backend.getData(symbol);
         return (data != undefined) ? data : '('+symbol+')';
     }
     const symbolsToText = [];
@@ -12,7 +25,7 @@ export function log(context, symbols, message) {
             symbolsToText.push(symbolToText(element));
     else
         symbolsToText.push(symbolToText(symbols));
-    context.logMessages.push('  '.repeat(context.stackHeight)+message+': '+symbolsToText.join(', '));
+    context.logMessages.push(repeatString('  ', context.stackHeight)+message+': '+symbolsToText.join(', '));
 }
 
 export function throwError(context, symbols, message) {

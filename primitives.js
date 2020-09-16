@@ -5,63 +5,63 @@ import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValue
 import { copyAndRenameOperand, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution, pointerCast } from './utils.js';
 import { throwError, throwWarning, popStackFrame } from './stackTrace.js';
 import { llvmLookupMaps } from './symbols.js';
-import BasicBackend from '../SymatemJS/BasicBackend.js';
+import { Utils } from '../SymatemJS/SymatemJS.mjs';
 
 
 
 export function primitiveDeferEvaluation(context, entry) {
-    const [outputOperand, outputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    const [outputOperand, outputLlvmValue] = getLlvmValue(context, context.backend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
+    entry.outputOperands.set(context.backend.symbolByName.Output, outputOperand);
     buildLLVMFunction(context, entry, outputLlvmValue);
     finishExecution(context, entry);
 }
 
 export function primitiveBundle(context, entry) {
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, entry.inputOperandBundle);
+    entry.outputOperands.set(context.backend.symbolByName.Output, entry.inputOperandBundle);
     buildLLVMFunction(context, entry, entry.aux.inputLlvmValueBundle);
     finishExecution(context, entry);
 }
 
 export function primitiveUnbundle(context, entry) {
-    entry.outputOperands = unbundleOperands(context, entry.inputOperands.get(BasicBackend.symbolByName.Input));
-    const outputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
+    entry.outputOperands = unbundleOperands(context, entry.inputOperands.get(context.backend.symbolByName.Input));
+    const outputLlvmValue = entry.aux.inputLlvmValues.get(context.backend.symbolByName.Input);
     buildLLVMFunction(context, entry, outputLlvmValue);
     finishExecution(context, entry);
 }
 
 export function primitiveStackAllocate(context, entry) {
-    const [inputOperand, inputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
+    const [inputOperand, inputLlvmValue] = getLlvmValue(context, context.backend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues);
     if(!(inputLlvmValue.type instanceof LLVMIntegerType))
         throwError(context, 'Input is not a natural number');
     const llymType = new LLVMIntegerType(32),
-          outputOperand = BasicBackend.symbolByName.Pointer,
+          outputOperand = context.backend.symbolByName.Pointer,
           memoryOperation = new LLVMAllocaInstruction(new LLVMValue(new LLVMPointerType(new LLVMIntegerType(8))), inputLlvmValue);
           // pointerOperation = new LLVMCastInstruction(new LLVMValue(llymType), 'ptrtoint', memoryOperation.result);
     entry.aux.llvmBasicBlock.instructions.push(memoryOperation);
     // entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Output, outputOperand);
     buildLLVMFunction(context, entry, memoryOperation.result);
     finishExecution(context, entry);
 }
 
 export function primitiveLoad(context, entry) {
-    const [addressOperand, addressLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
-          dstPlaceholderEncoding = entry.inputOperands.get(BasicBackend.symbolByName.PlaceholderEncoding),
-          dstEncoding = context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.Default),
-          dstSize = context.ontology.getData(context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.SlotSize)),
+    const [addressOperand, addressLlvmValue] = getLlvmValue(context, context.backend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
+          dstPlaceholderEncoding = entry.inputOperands.get(context.backend.symbolByName.PlaceholderEncoding),
+          dstEncoding = context.backend.getPairOptionally(dstPlaceholderEncoding, context.backend.symbolByName.Default),
+          dstSize = context.backend.getData(context.backend.getPairOptionally(dstPlaceholderEncoding, context.backend.symbolByName.SlotSize)),
           [llymType, outputOperand] = llvmTypeAndTypedPlaceholderOfEncoding(context, dstEncoding, dstSize),
           pointerOperation = pointerCast(addressLlvmValue, llymType),
           memoryOperation = new LLVMLoadInstruction(new LLVMValue(llymType), pointerOperation.result);
     entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
     entry.aux.llvmBasicBlock.instructions.push(memoryOperation);
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Output, outputOperand);
     buildLLVMFunction(context, entry, memoryOperation.result);
     finishExecution(context, entry);
 }
 
 export function primitiveStore(context, entry) {
-    const [addressOperand, addressLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
-          [inputOperand, inputLlvmValue] = getLlvmValue(context, BasicBackend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues),
+    const [addressOperand, addressLlvmValue] = getLlvmValue(context, context.backend.symbolByName.Address, entry.inputOperands, entry.aux.inputLlvmValues),
+          [inputOperand, inputLlvmValue] = getLlvmValue(context, context.backend.symbolByName.Input, entry.inputOperands, entry.aux.inputLlvmValues),
           pointerOperation = pointerCast(addressLlvmValue, inputLlvmValue.type),
           memoryOperation = new LLVMStoreInstruction(LLVMVoidConstant, inputLlvmValue, pointerOperation.result);
     entry.aux.llvmBasicBlock.instructions.push(pointerOperation);
@@ -71,19 +71,19 @@ export function primitiveStore(context, entry) {
 }
 
 export function primitiveConversion(numeric, context, entry) {
-    const inputOperand = entry.inputOperands.get(BasicBackend.symbolByName.Input),
-          dstPlaceholderEncoding = entry.inputOperands.get(BasicBackend.symbolByName.PlaceholderEncoding),
-          dstEncoding = context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.Default),
-          dstSize = context.ontology.getData(context.ontology.getSolitary(dstPlaceholderEncoding, BasicBackend.symbolByName.SlotSize)),
-          inputLlvmValue = entry.aux.inputLlvmValues.get(BasicBackend.symbolByName.Input);
+    const inputOperand = entry.inputOperands.get(context.backend.symbolByName.Input),
+          dstPlaceholderEncoding = entry.inputOperands.get(context.backend.symbolByName.PlaceholderEncoding),
+          dstEncoding = context.backend.getPairOptionally(dstPlaceholderEncoding, context.backend.symbolByName.Default),
+          dstSize = context.backend.getData(context.backend.getPairOptionally(dstPlaceholderEncoding, context.backend.symbolByName.SlotSize)),
+          inputLlvmValue = entry.aux.inputLlvmValues.get(context.backend.symbolByName.Input);
     let outputOperand = inputOperand, srcEncoding, srcSize;
     if(inputLlvmValue) {
-        const srcPlaceholderEncoding = context.ontology.getSolitary(inputOperand, BasicBackend.symbolByName.PlaceholderEncoding);
-        srcEncoding = context.ontology.getSolitary(srcPlaceholderEncoding, BasicBackend.symbolByName.Default);
-        srcSize = context.ontology.getData(context.ontology.getSolitary(srcPlaceholderEncoding, BasicBackend.symbolByName.SlotSize));
+        const srcPlaceholderEncoding = context.backend.getPairOptionally(inputOperand, context.backend.symbolByName.PlaceholderEncoding);
+        srcEncoding = context.backend.getPairOptionally(srcPlaceholderEncoding, context.backend.symbolByName.Default);
+        srcSize = context.backend.getData(context.backend.getPairOptionally(srcPlaceholderEncoding, context.backend.symbolByName.SlotSize));
     } else {
-        srcEncoding = context.ontology.getSolitary(inputOperand, BasicBackend.symbolByName.Encoding);
-        srcSize = context.ontology.getLength(inputOperand);
+        srcEncoding = context.backend.getPairOptionally(inputOperand, context.backend.symbolByName.Encoding);
+        srcSize = context.backend.getLength(inputOperand);
     }
     if(!numeric && srcSize != dstSize)
         throwError(context, 'PlaceholderEncoding SlotSize mismatch');
@@ -92,70 +92,70 @@ export function primitiveConversion(numeric, context, entry) {
             let llymType, kind = 'bitcast';
             [llymType, outputOperand] = llvmTypeAndTypedPlaceholderOfEncoding(context, dstEncoding, dstSize);
             if(numeric) {
-                if(srcEncoding === BasicBackend.symbolByName.IEEE754) {
-                    kind = (dstEncoding === BasicBackend.symbolByName.IEEE754)
+                if(srcEncoding === context.backend.symbolByName.IEEE754) {
+                    kind = (dstEncoding === context.backend.symbolByName.IEEE754)
                         ? ((srcSize > dstSize) ? 'fptrunc' : 'fpext')
-                        : ((dstEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'fptoui' : 'fptosi');
+                        : ((dstEncoding === context.backend.symbolByName.BinaryNumber) ? 'fptoui' : 'fptosi');
                 } else {
-                    if(dstEncoding === BasicBackend.symbolByName.IEEE754)
-                        kind = (srcEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'uitofp' : 'sitofp';
+                    if(dstEncoding === context.backend.symbolByName.IEEE754)
+                        kind = (srcEncoding === context.backend.symbolByName.BinaryNumber) ? 'uitofp' : 'sitofp';
                     else if(srcSize > dstSize)
                         kind = 'trunc';
                     else
-                        kind = (srcEncoding === BasicBackend.symbolByName.BinaryNumber) ? 'zext' : 'sext';
+                        kind = (srcEncoding === context.backend.symbolByName.BinaryNumber) ? 'zext' : 'sext';
                 }
             }
             const operation = new LLVMCastInstruction(new LLVMValue(llymType), kind, inputLlvmValue);
             entry.aux.llvmBasicBlock.instructions.push(operation);
             buildLLVMFunction(context, entry, operation.result);
         } else {
-            outputOperand = context.ontology.createSymbol(context.namespaceId);
+            outputOperand = context.backend.createSymbol(context.namespaceId);
             const dataBytes = (numeric)
-                ? context.ontology.encodeBinary(dstEncoding, context.ontology.getData(inputOperand))
-                : context.ontology.getRawData(inputOperand);
-            context.ontology.setSolitary([outputOperand, symbolByName.Encoding, dstEncoding]);
-            context.ontology.setRawData(outputOperand, dataBytes, dstSize);
+                ? context.backend.encodeBinary(dstEncoding, context.backend.getData(inputOperand))
+                : context.backend.getRawData(inputOperand);
+            context.backend.getAndSetPairs(outputOperand, symbolByName.Encoding, [dstEncoding]);
+            context.backend.setRawData(outputOperand, dataBytes, dstSize);
         }
     } else if(inputLlvmValue)
         buildLLVMFunction(context, entry, inputLlvmValue);
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Output, outputOperand);
     finishExecution(context, entry);
 }
 
 export function primitiveDivision(context, entry) {
-    const inputA = entry.inputOperands.get(BasicBackend.symbolByName.Dividend),
-          inputB = entry.inputOperands.get(BasicBackend.symbolByName.Divisor),
-          isPlaceholderA = entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.Dividend),
-          isPlaceholderB = entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.Divisor);
+    const inputA = entry.inputOperands.get(context.backend.symbolByName.Dividend),
+          inputB = entry.inputOperands.get(context.backend.symbolByName.Divisor),
+          isPlaceholderA = entry.aux.inputLlvmValues.has(context.backend.symbolByName.Dividend),
+          isPlaceholderB = entry.aux.inputLlvmValues.has(context.backend.symbolByName.Divisor);
     let quotientOperand, restOperand;
     if(isPlaceholderA || isPlaceholderB) {
-        const inputALlvmValue = getLlvmValue(context, BasicBackend.symbolByName.Dividend, entry.inputOperands, entry.aux.inputLlvmValues)[1],
-              inputBLlvmValue = getLlvmValue(context, BasicBackend.symbolByName.Divisor, entry.inputOperands, entry.aux.inputLlvmValues)[1];
+        const inputALlvmValue = getLlvmValue(context, context.backend.symbolByName.Dividend, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+              inputBLlvmValue = getLlvmValue(context, context.backend.symbolByName.Divisor, entry.inputOperands, entry.aux.inputLlvmValues)[1];
         if(inputALlvmValue.type !== inputBLlvmValue.type)
             throwError(context, [inputA, inputB], 'Type mismatch');
         quotientOperand = restOperand = isPlaceholderA ? inputA : inputB;
-        const encoding = context.ontology.getSolitary(context.ontology.getSolitary(quotientOperand, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default),
+        const encoding = context.backend.getPairOptionally(context.backend.getPairOptionally(quotientOperand, context.backend.symbolByName.PlaceholderEncoding), context.backend.symbolByName.Default),
               prefix = llvmLookupMaps.divisionPrefix.get(encoding),
               divOperation = new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+'div', inputALlvmValue, inputBLlvmValue),
               remOperation = new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+'rem', inputALlvmValue, inputBLlvmValue);
         entry.aux.llvmBasicBlock.instructions.push(divOperation);
         entry.aux.llvmBasicBlock.instructions.push(remOperation);
         entry.aux.outputLlvmValues = new Map([
-            [BasicBackend.symbolByName.Quotient, divOperation.result],
-            [BasicBackend.symbolByName.Rest, remOperation.result]
+            [context.backend.symbolByName.Quotient, divOperation.result],
+            [context.backend.symbolByName.Rest, remOperation.result]
         ]);
         const returnLlvmValue = buildLlvmBundle(context, entry.aux.llvmBasicBlock, Array.from(entry.aux.outputLlvmValues.values()));
         buildLLVMFunction(context, entry, returnLlvmValue);
     } else {
-        const dividend = context.ontology.getData(inputA),
-              divisor = context.ontology.getData(inputB);
-        quotientOperand = context.ontology.createSymbol(context.namespaceId);
-        restOperand = context.ontology.createSymbol(context.namespaceId);
-        context.ontology.setData(quotientOperand, dividend/divisor);
-        context.ontology.setData(restOperand, dividend%divisor);
+        const dividend = context.backend.getData(inputA),
+              divisor = context.backend.getData(inputB);
+        quotientOperand = context.backend.createSymbol(context.namespaceId);
+        restOperand = context.backend.createSymbol(context.namespaceId);
+        context.backend.setData(quotientOperand, dividend/divisor);
+        context.backend.setData(restOperand, dividend%divisor);
     }
-    entry.outputOperands.set(BasicBackend.symbolByName.Quotient, quotientOperand);
-    entry.outputOperands.set(BasicBackend.symbolByName.Rest, restOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Quotient, quotientOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Rest, restOperand);
     finishExecution(context, entry);
 }
 
@@ -165,43 +165,43 @@ export function primitiveBinaryInstruction(compileCallback, interpretCallback, i
         let inputALlvmValue, inputBLlvmValue, operation;
         [inputAOperand, inputALlvmValue] = getLlvmValue(context, inputATag, entry.inputOperands, entry.aux.inputLlvmValues);
         [inputBOperand, inputBLlvmValue] = getLlvmValue(context, inputBTag, entry.inputOperands, entry.aux.inputLlvmValues);
-        inputAEncoding = context.ontology.getSolitary(context.ontology.getSolitary(inputAOperand, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default);
-        inputBEncoding = context.ontology.getSolitary(context.ontology.getSolitary(inputBOperand, BasicBackend.symbolByName.PlaceholderEncoding), BasicBackend.symbolByName.Default);
+        inputAEncoding = context.backend.getPairOptionally(context.backend.getPairOptionally(inputAOperand, context.backend.symbolByName.PlaceholderEncoding), context.backend.symbolByName.Default);
+        inputBEncoding = context.backend.getPairOptionally(context.backend.getPairOptionally(inputBOperand, context.backend.symbolByName.PlaceholderEncoding), context.backend.symbolByName.Default);
         [outputOperand, operation] = compileCallback(context, entry, inputAOperand, inputAEncoding, inputALlvmValue, inputBLlvmValue);
         entry.aux.llvmBasicBlock.instructions.push(operation);
         buildLLVMFunction(context, entry, operation.result);
     } else {
         inputAOperand = entry.inputOperands.get(inputATag);
         inputBOperand = entry.inputOperands.get(inputBTag);
-        inputAEncoding = context.ontology.getSolitary(inputAOperand, BasicBackend.symbolByName.Encoding);
-        inputBEncoding = context.ontology.getSolitary(inputBOperand, BasicBackend.symbolByName.Encoding);
-        outputOperand = context.ontology.createSymbol(context.namespaceId);
-        context.ontology.setData(outputOperand, interpretCallback(context.ontology.getData(inputAOperand), context.ontology.getData(inputBOperand)));
+        inputAEncoding = context.backend.getPairOptionally(inputAOperand, context.backend.symbolByName.Encoding);
+        inputBEncoding = context.backend.getPairOptionally(inputBOperand, context.backend.symbolByName.Encoding);
+        outputOperand = context.backend.createSymbol(context.namespaceId);
+        context.backend.setData(outputOperand, interpretCallback(context.backend.getData(inputAOperand), context.backend.getData(inputBOperand)));
     }
-    if(entry.operator === BasicBackend.symbolByName.MultiplyByPowerOfTwo ||
-       entry.operator === BasicBackend.symbolByName.DivideByPowerOfTwo) {
-        if(inputBEncoding !== BasicBackend.symbolByName.BinaryNumber)
+    if(entry.operator === context.backend.symbolByName.MultiplyByPowerOfTwo ||
+       entry.operator === context.backend.symbolByName.DivideByPowerOfTwo) {
+        if(inputBEncoding !== context.backend.symbolByName.BinaryNumber)
             throwError(context, inputBOperand, 'Exponent is not a natural number');
     } else if(inputAEncoding !== inputBEncoding)
         throwError(context, [inputAOperand, inputBOperand], 'Type mismatch');
     switch(entry.operator) {
-        case BasicBackend.symbolByName.MultiplyByPowerOfTwo:
-        case BasicBackend.symbolByName.DivideByPowerOfTwo:
-        case BasicBackend.symbolByName.And:
-        case BasicBackend.symbolByName.Or:
-        case BasicBackend.symbolByName.Xor:
-            if(inputAEncoding === BasicBackend.symbolByName.IEEE754)
+        case context.backend.symbolByName.MultiplyByPowerOfTwo:
+        case context.backend.symbolByName.DivideByPowerOfTwo:
+        case context.backend.symbolByName.And:
+        case context.backend.symbolByName.Or:
+        case context.backend.symbolByName.Xor:
+            if(inputAEncoding === context.backend.symbolByName.IEEE754)
                 throwError(context, inputAOperand, 'IEEE754 not supported by bitwise operations');
             break;
     }
-    entry.outputOperands.set(BasicBackend.symbolByName.Output, outputOperand);
+    entry.outputOperands.set(context.backend.symbolByName.Output, outputOperand);
     finishExecution(context, entry);
 }
 
 export function compileBitShift(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
-    const kind = (entry.operator === BasicBackend.symbolByName.MultiplyByPowerOfTwo)
+    const kind = (entry.operator === context.backend.symbolByName.MultiplyByPowerOfTwo)
         ? 'shl'
-        : ((encoding === BasicBackend.symbolByName.BinaryNumber) ? 'lshr': 'ashr');
+        : ((encoding === context.backend.symbolByName.BinaryNumber) ? 'lshr': 'ashr');
     return [
         output,
         new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), kind, inputALlvmValue, inputBLlvmValue)
@@ -209,7 +209,7 @@ export function compileBitShift(context, entry, output, encoding, inputALlvmValu
 }
 
 export function compileBinaryArithmetic(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
-    const prefix = (encoding === BasicBackend.symbolByName.IEEE754) ? 'f' : '';
+    const prefix = (encoding === context.backend.symbolByName.IEEE754) ? 'f' : '';
     return [
         output,
         new LLVMBinaryInstruction(new LLVMValue(inputALlvmValue.type), prefix+llvmLookupMaps.binaryArithmetic.get(entry.operator), inputALlvmValue, inputBLlvmValue)
@@ -217,11 +217,11 @@ export function compileBinaryArithmetic(context, entry, output, encoding, inputA
 }
 
 export function compileBinaryComparison(context, entry, output, encoding, inputALlvmValue, inputBLlvmValue) {
-    const prefix = ((encoding === BasicBackend.symbolByName.BinaryNumber || encoding === BasicBackend.symbolByName.TwosComplement) &&
-                    (entry.operator === BasicBackend.symbolByName.Equal || entry.operator === BasicBackend.symbolByName.NotEqual))
+    const prefix = ((encoding === context.backend.symbolByName.BinaryNumber || encoding === context.backend.symbolByName.TwosComplement) &&
+                    (entry.operator === context.backend.symbolByName.Equal || entry.operator === context.backend.symbolByName.NotEqual))
                     ? '' : llvmLookupMaps.binaryComparisonPrefix.get(encoding);
     return [
-        BasicBackend.symbolByName.Boolean,
+        context.backend.symbolByName.Boolean,
         new LLVMCompareInstruction(new LLVMValue(new LLVMIntegerType(1)), prefix+llvmLookupMaps.binaryComparison.get(entry.operator), inputALlvmValue, inputBLlvmValue)
     ];
 }
@@ -230,22 +230,22 @@ export function primitiveIf(context, entry) {
     entry.aux.operatDestinationLlvmValues = {};
     entry.aux.operatDestinationOperands = {};
     entry.aux.operationsBlockedByThis = new Map();
-    entry.aux.readyOperations = [BasicBackend.symbolByName.Then, BasicBackend.symbolByName.Else];
+    entry.aux.readyOperations = [context.backend.symbolByName.Then, context.backend.symbolByName.Else];
     entry.aux.blockedOperations = new Set();
     {
         const destinationOperands = new Map(),
               destinationLlvmValues = new Map();
         for(const operandTag of entry.inputOperands.keys())
-            if(operandTag != BasicBackend.symbolByName.Condition && operandTag != BasicBackend.symbolByName.Then && operandTag != BasicBackend.symbolByName.Else)
+            if(operandTag != context.backend.symbolByName.Condition && operandTag != context.backend.symbolByName.Then && operandTag != context.backend.symbolByName.Else)
                 copyAndRenameOperand(destinationOperands, destinationLlvmValues, entry, operandTag, operandTag);
         for(const operation of entry.aux.readyOperations) {
             entry.aux.operatDestinationOperands[operation] = new Map(destinationOperands);
             entry.aux.operatDestinationLlvmValues[operation] = new Map(destinationLlvmValues);
-            copyAndRenameOperand(entry.aux.operatDestinationOperands[operation], entry.aux.operatDestinationLlvmValues[operation], entry, BasicBackend.symbolByName.Operator, operation);
+            copyAndRenameOperand(entry.aux.operatDestinationOperands[operation], entry.aux.operatDestinationLlvmValues[operation], entry, context.backend.symbolByName.Operator, operation);
         }
     }
-    if(!entry.aux.inputLlvmValues.has(BasicBackend.symbolByName.Condition)) {
-        const operation = context.ontology.getData(entry.inputOperands.get(BasicBackend.symbolByName.Condition)) ? BasicBackend.symbolByName.Then : BasicBackend.symbolByName.Else;
+    if(!entry.aux.inputLlvmValues.has(context.backend.symbolByName.Condition)) {
+        const operation = context.backend.getData(entry.inputOperands.get(context.backend.symbolByName.Condition)) ? context.backend.symbolByName.Then : context.backend.symbolByName.Else;
         entry.aux.resume = function() {
             const [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context, entry.aux.llvmBasicBlock, entry, operation,
@@ -267,7 +267,7 @@ export function primitiveIf(context, entry) {
     entry.aux.resume = function() {
         while(entry.aux.readyOperations.length > 0) {
             const operation = entry.aux.readyOperations.shift(),
-                  branchIndex = (operation === BasicBackend.symbolByName.Then) ? 0 : 1,
+                  branchIndex = (operation === context.backend.symbolByName.Then) ? 0 : 1,
                   label = entry.aux.phiInstruction.caseLabels[branchIndex],
                   [instanceEntry, sourceLlvmValues, sourceLlvmValueBundle] = buildLlvmCall(
                 context, label, entry, operation,
@@ -287,7 +287,7 @@ export function primitiveIf(context, entry) {
             label.instructions.push(entry.aux.branchToExit);
             if(entry.aux.ready) {
                 if(entry.aux.phiInstruction.caseValues[0].type !== entry.aux.phiInstruction.caseValues[1].type)
-                    throwError(context, [entry.outputOperands.get(BasicBackend.symbolByName.Output), outputOperand], 'Type mismatch');
+                    throwError(context, [entry.outputOperands.get(context.backend.symbolByName.Output), outputOperand], 'Type mismatch');
                 continue;
             }
             entry.aux.phiInstruction.result = new LLVMValue(entry.aux.phiInstruction.caseValues[branchIndex].type);
@@ -295,7 +295,7 @@ export function primitiveIf(context, entry) {
             buildLLVMFunction(context, entry, entry.aux.phiInstruction.result);
             entry.llvmFunction.basicBlocks.splice(0, 0,
                 new LLVMBasicBlock(undefined, [new LLVMConditionalBranchInstruction(
-                    getLlvmValue(context, BasicBackend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
+                    getLlvmValue(context, context.backend.symbolByName.Condition, entry.inputOperands, entry.aux.inputLlvmValues)[1],
                     entry.aux.phiInstruction.caseLabels[0],
                     entry.aux.phiInstruction.caseLabels[1]
                 )]),

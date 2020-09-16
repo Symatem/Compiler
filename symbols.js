@@ -2,15 +2,15 @@ import { primitiveDeferEvaluation, primitiveBundle, primitiveUnbundle,
 primitiveStackAllocate, primitiveLoad, primitiveStore, primitiveConversion,
 primitiveDivision, primitiveBinaryInstruction, compileBitShift, compileBinaryArithmetic, compileBinaryComparison,
 primitiveIf } from './primitives.js';
-import BasicBackend from '../SymatemJS/BasicBackend.js';
 
 
 export const typedPlaceholderCache = new Map();
 export let llvmLookupMaps, primitiveLookupMap;
-export function initializeOntology(ontology) {
-    if(BasicBackend.symbolByName.Compiler)
+export function initializeBackend(backend) {
+    backend.initPredefinedSymbols();
+    if(backend.symbolByName.Compiler)
         return;
-    const namespaceId = ontology.registerAdditionalSymbols('Compiler', [
+    const namespaceId = backend.registerNamespaces({'Compiler': [
         'Operator',
         'OperatorInstance',
         'Operation',
@@ -94,87 +94,87 @@ export function initializeOntology(ontology) {
         'Condition',
         'Then',
         'Else',
-    ]);
-    ontology.setData(BasicBackend.symbolByName.Zero, 0);
-    ontology.setData(BasicBackend.symbolByName.One, 1);
-    ontology.setData(BasicBackend.symbolByName.Two, 2);
-    ontology.setData(BasicBackend.symbolByName.Four, 4);
-    ontology.setData(BasicBackend.symbolByName.Eight, 8);
-    ontology.setData(BasicBackend.symbolByName.Sixteen, 16);
-    ontology.setData(BasicBackend.symbolByName.ThirtyTwo, 32);
-    ontology.setData(BasicBackend.symbolByName.SixtyFour, 64);
-    function setupTypedPlaceholder(typedPlaceholder, size, encoding, count=BasicBackend.symbolByName.One) {
-        const placeholderEncoding = ontology.createSymbol(namespaceId);
-        ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.TypedPlaceholder], true);
-        ontology.setTriple([typedPlaceholder, BasicBackend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
-        ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Type, BasicBackend.symbolByName.Composite], true);
-        if(count != BasicBackend.symbolByName.Void)
-            ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Count, count], true);
-        ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.SlotSize, size], true);
-        ontology.setTriple([placeholderEncoding, BasicBackend.symbolByName.Default, encoding], true);
-        typedPlaceholderCache.set(encoding+','+ontology.getData(size), typedPlaceholder);
+    ]}).Compiler;
+    backend.setData(backend.symbolByName.Zero, 0);
+    backend.setData(backend.symbolByName.One, 1);
+    backend.setData(backend.symbolByName.Two, 2);
+    backend.setData(backend.symbolByName.Four, 4);
+    backend.setData(backend.symbolByName.Eight, 8);
+    backend.setData(backend.symbolByName.Sixteen, 16);
+    backend.setData(backend.symbolByName.ThirtyTwo, 32);
+    backend.setData(backend.symbolByName.SixtyFour, 64);
+    function setupTypedPlaceholder(typedPlaceholder, size, encoding, count=backend.symbolByName.One) {
+        const placeholderEncoding = backend.createSymbol(namespaceId);
+        backend.setTriple([typedPlaceholder, backend.symbolByName.Type, backend.symbolByName.TypedPlaceholder], true);
+        backend.setTriple([typedPlaceholder, backend.symbolByName.PlaceholderEncoding, placeholderEncoding], true);
+        backend.setTriple([placeholderEncoding, backend.symbolByName.Type, backend.symbolByName.Composite], true);
+        if(count != backend.symbolByName.Void)
+            backend.setTriple([placeholderEncoding, backend.symbolByName.Count, count], true);
+        backend.setTriple([placeholderEncoding, backend.symbolByName.SlotSize, size], true);
+        backend.setTriple([placeholderEncoding, backend.symbolByName.Default, encoding], true);
+        typedPlaceholderCache.set(encoding+','+backend.getData(size), typedPlaceholder);
     }
-    setupTypedPlaceholder(BasicBackend.symbolByName.Pointer, BasicBackend.symbolByName.Eight, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Void);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Symbol, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber, BasicBackend.symbolByName.Two);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Boolean, BasicBackend.symbolByName.One, BasicBackend.symbolByName.BinaryNumber);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Natural32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.BinaryNumber);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Integer32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.TwosComplement);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Float32, BasicBackend.symbolByName.ThirtyTwo, BasicBackend.symbolByName.IEEE754);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Natural64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.BinaryNumber);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Integer64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.TwosComplement);
-    setupTypedPlaceholder(BasicBackend.symbolByName.Float64, BasicBackend.symbolByName.SixtyFour, BasicBackend.symbolByName.IEEE754);
+    setupTypedPlaceholder(backend.symbolByName.Pointer, backend.symbolByName.Eight, backend.symbolByName.BinaryNumber, backend.symbolByName.Void);
+    setupTypedPlaceholder(backend.symbolByName.Symbol, backend.symbolByName.ThirtyTwo, backend.symbolByName.BinaryNumber, backend.symbolByName.Two);
+    setupTypedPlaceholder(backend.symbolByName.Boolean, backend.symbolByName.One, backend.symbolByName.BinaryNumber);
+    setupTypedPlaceholder(backend.symbolByName.Natural32, backend.symbolByName.ThirtyTwo, backend.symbolByName.BinaryNumber);
+    setupTypedPlaceholder(backend.symbolByName.Integer32, backend.symbolByName.ThirtyTwo, backend.symbolByName.TwosComplement);
+    setupTypedPlaceholder(backend.symbolByName.Float32, backend.symbolByName.ThirtyTwo, backend.symbolByName.IEEE754);
+    setupTypedPlaceholder(backend.symbolByName.Natural64, backend.symbolByName.SixtyFour, backend.symbolByName.BinaryNumber);
+    setupTypedPlaceholder(backend.symbolByName.Integer64, backend.symbolByName.SixtyFour, backend.symbolByName.TwosComplement);
+    setupTypedPlaceholder(backend.symbolByName.Float64, backend.symbolByName.SixtyFour, backend.symbolByName.IEEE754);
     llvmLookupMaps = {
         divisionPrefix: new Map([
-            [BasicBackend.symbolByName.BinaryNumber, 'u'],
-            [BasicBackend.symbolByName.TwosComplement, 's'],
-            [BasicBackend.symbolByName.IEEE754, 'f']
+            [backend.symbolByName.BinaryNumber, 'u'],
+            [backend.symbolByName.TwosComplement, 's'],
+            [backend.symbolByName.IEEE754, 'f']
         ]),
         binaryArithmetic: new Map([
-            [BasicBackend.symbolByName.And, 'and'],
-            [BasicBackend.symbolByName.Or, 'or'],
-            [BasicBackend.symbolByName.Xor, 'xor'],
-            [BasicBackend.symbolByName.Addition, 'add'],
-            [BasicBackend.symbolByName.Subtraction, 'sub'],
-            [BasicBackend.symbolByName.Multiplication, 'mul']
+            [backend.symbolByName.And, 'and'],
+            [backend.symbolByName.Or, 'or'],
+            [backend.symbolByName.Xor, 'xor'],
+            [backend.symbolByName.Addition, 'add'],
+            [backend.symbolByName.Subtraction, 'sub'],
+            [backend.symbolByName.Multiplication, 'mul']
         ]),
         binaryComparison: new Map([
-            [BasicBackend.symbolByName.Equal, 'eq'],
-            [BasicBackend.symbolByName.NotEqual, 'ne'],
-            [BasicBackend.symbolByName.LessThan, 'lt'],
-            [BasicBackend.symbolByName.LessEqual, 'le'],
-            [BasicBackend.symbolByName.GreaterThan, 'gt'],
-            [BasicBackend.symbolByName.GreaterEqual, 'ge']
+            [backend.symbolByName.Equal, 'eq'],
+            [backend.symbolByName.NotEqual, 'ne'],
+            [backend.symbolByName.LessThan, 'lt'],
+            [backend.symbolByName.LessEqual, 'le'],
+            [backend.symbolByName.GreaterThan, 'gt'],
+            [backend.symbolByName.GreaterEqual, 'ge']
         ]),
         binaryComparisonPrefix: new Map([
-            [BasicBackend.symbolByName.BinaryNumber, 'u'],
-            [BasicBackend.symbolByName.TwosComplement, 's'],
-            [BasicBackend.symbolByName.IEEE754, 'o']
+            [backend.symbolByName.BinaryNumber, 'u'],
+            [backend.symbolByName.TwosComplement, 's'],
+            [backend.symbolByName.IEEE754, 'o']
         ])
     };
     primitiveLookupMap = new Map([
-        [BasicBackend.symbolByName.DeferEvaluation, primitiveDeferEvaluation],
-        [BasicBackend.symbolByName.Bundle, primitiveBundle],
-        [BasicBackend.symbolByName.Unbundle, primitiveUnbundle],
-        [BasicBackend.symbolByName.StackAllocate, primitiveStackAllocate],
-        [BasicBackend.symbolByName.Load, primitiveLoad],
-        [BasicBackend.symbolByName.Store, primitiveStore],
-        [BasicBackend.symbolByName.NumericConversion, primitiveConversion.bind(undefined, true)],
-        [BasicBackend.symbolByName.Reinterpretation, primitiveConversion.bind(undefined, false)],
-        [BasicBackend.symbolByName.MultiplyByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a<<b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Exponent)],
-        [BasicBackend.symbolByName.DivideByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a>>b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Exponent)],
-        [BasicBackend.symbolByName.And, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a&b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
-        [BasicBackend.symbolByName.Or, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a|b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
-        [BasicBackend.symbolByName.Xor, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a^b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
-        [BasicBackend.symbolByName.Addition, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a+b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
-        [BasicBackend.symbolByName.Subtraction, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a-b), BasicBackend.symbolByName.Minuend, BasicBackend.symbolByName.Subtrahend)],
-        [BasicBackend.symbolByName.Multiplication, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a*b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.OtherInput)],
-        [BasicBackend.symbolByName.Division, primitiveDivision],
-        [BasicBackend.symbolByName.Equal, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a==b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.NotEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a!=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.LessThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.LessEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.GreaterThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.GreaterEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>=b), BasicBackend.symbolByName.Input, BasicBackend.symbolByName.Comparand)],
-        [BasicBackend.symbolByName.If, primitiveIf],
+        [backend.symbolByName.DeferEvaluation, primitiveDeferEvaluation],
+        [backend.symbolByName.Bundle, primitiveBundle],
+        [backend.symbolByName.Unbundle, primitiveUnbundle],
+        [backend.symbolByName.StackAllocate, primitiveStackAllocate],
+        [backend.symbolByName.Load, primitiveLoad],
+        [backend.symbolByName.Store, primitiveStore],
+        [backend.symbolByName.NumericConversion, primitiveConversion.bind(undefined, true)],
+        [backend.symbolByName.Reinterpretation, primitiveConversion.bind(undefined, false)],
+        [backend.symbolByName.MultiplyByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a<<b), backend.symbolByName.Input, backend.symbolByName.Exponent)],
+        [backend.symbolByName.DivideByPowerOfTwo, primitiveBinaryInstruction.bind(undefined, compileBitShift, (a, b) => (a>>b), backend.symbolByName.Input, backend.symbolByName.Exponent)],
+        [backend.symbolByName.And, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a&b), backend.symbolByName.Input, backend.symbolByName.OtherInput)],
+        [backend.symbolByName.Or, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a|b), backend.symbolByName.Input, backend.symbolByName.OtherInput)],
+        [backend.symbolByName.Xor, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a^b), backend.symbolByName.Input, backend.symbolByName.OtherInput)],
+        [backend.symbolByName.Addition, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a+b), backend.symbolByName.Input, backend.symbolByName.OtherInput)],
+        [backend.symbolByName.Subtraction, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a-b), backend.symbolByName.Minuend, backend.symbolByName.Subtrahend)],
+        [backend.symbolByName.Multiplication, primitiveBinaryInstruction.bind(undefined, compileBinaryArithmetic, (a, b) => (a*b), backend.symbolByName.Input, backend.symbolByName.OtherInput)],
+        [backend.symbolByName.Division, primitiveDivision],
+        [backend.symbolByName.Equal, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a==b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.NotEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a!=b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.LessThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.LessEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a<=b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.GreaterThan, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.GreaterEqual, primitiveBinaryInstruction.bind(undefined, compileBinaryComparison, (a, b) => (a>=b), backend.symbolByName.Input, backend.symbolByName.Comparand)],
+        [backend.symbolByName.If, primitiveIf],
     ]);
 }
