@@ -1,0 +1,44 @@
+<!DOCTYPE "html">
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <script type="module">
+            import { JavaScriptBackend } from '../../SymatemJS/SymatemJS.mjs';
+            import { CompilerContext } from '../main.js';
+            import { Program } from '../program.js';
+            const context = new CompilerContext(new JavaScriptBackend()),
+                  program = new Program(context.backend);
+
+            const button = document.getElementById('button');
+            button.onclick = function() {
+                button.parentNode.removeChild(button);
+                const xhr = new XMLHttpRequest();
+                xhr.overrideMimeType('application/javascript');
+                xhr.onload = function() {
+                    const codeBox = document.body.children[0],
+                          time0 = performance.now(),
+                          inputs = eval('('+xhr.responseText+')')(program),
+                          time1 = performance.now();
+                    try {
+                        const entry = context.execute(inputs, true),
+                              time2 = performance.now();
+                        console.log((time1-time0), (time2-time1));
+                        codeBox.innerText = context.getLlvmCode();
+                    } catch(error) {
+                        codeBox.innerText = context.logMessages.join('\n');
+                        console.log(error);
+                    }
+                }
+                xhr.onerror = function(error) {
+                    document.body.children[0].innerText = 'Could not fetch';
+                }
+                xhr.open('GET', 'src/JS/'+document.body.children[0].innerText, true);
+                xhr.send();
+            };
+        </script>
+    </head>
+    <body>
+        <pre contenteditable="true">Conversions.js</pre>
+        <input id="button" type="button" value="Fetch & Compile"/>
+    </body>
+</html>
