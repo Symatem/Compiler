@@ -18,7 +18,7 @@ export class Program {
             this.backend.setTriple([carrier, this.backend.symbolByName.SourceOperandTag, sourceOperandTag], true);
         } else if(sourceOperandTag) {
             const deferEvaluationOperation = this.backend.createSymbol(this.programNamespaceId),
-                  operator = this.backend.getPairOptionally(this.backend.symbolByName.Operation, destinationOperat, 0);
+                  operator = this.backend.getPairOptionally(this.backend.symbolByName.Operation, destinationOperat, this.backend.queryMasks.VMM);
             this.backend.setTriple([operator, this.backend.symbolByName.Operation, deferEvaluationOperation], true);
             this.createCarrier(deferEvaluationOperation, this.backend.symbolByName.Operator, this.backend.symbolByName.DeferEvaluation);
             this.createCarrier(deferEvaluationOperation, this.backend.symbolByName.Input, sourceOperat);
