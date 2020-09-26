@@ -4,44 +4,64 @@
     <meta charset="utf-8" />
     <script type="module">
       import { JavaScriptBackend } from "../../SymatemJS/SymatemJS.mjs";
-      import { CompilerContext } from "../main.js";
-      import { Program } from "../program.js";
-
-      //const tests = ['Conversions','FastInverseSquareRoot','FibRec','GcdRec','Memory'];
+      import { CompilerContext } from "../main.mjs";
+      import { Program } from "../program.mjs";
 
       const context = new CompilerContext(new JavaScriptBackend()),
         program = new Program(context.backend);
 
-      const button = document.getElementById("button");
-      button.onclick = async () => {
-        button.parentNode.removeChild(button);
-
+      async function execute(name) {
+        const time0 = performance.now();
+        const module = await import(`./src/JS/${name}.js`);
+        const time1 = performance.now();
+        const inputs = module.default(program);
         try {
-          const response = await fetch(
-            "src/JS/" + document.body.children[0].innerText
-          );
+          const entry = context.execute(inputs, true);
+        } catch (e) {
+          throw new Error(context.logMessages.join("\n"));
+        }
 
-          const codeBox = document.body.children[0],
-            time0 = performance.now(),
-            inputs = eval("(" + (await response.text()) + ")")(program),
-            time1 = performance.now();
-          try {
-            const entry = context.execute(inputs, true),
-              time2 = performance.now();
-            console.log(time1 - time0, time2 - time1);
-            codeBox.innerText = context.getLlvmCode();
-          } catch (error) {
-            codeBox.innerText = context.logMessages.join("\n");
-            console.log(error);
-          }
-        } catch {
-          document.body.children[0].innerText = "Could not fetch";
+        return {
+          time0,
+          time1,
+          time2: performance.now(),
+          LLVMCode: context.getLlvmCode()
+        };
+      }
+
+      const body = document.body;
+
+      const tests = [
+        "Conversions",
+        "FastInverseSquareRoot",
+        "FibRec",
+        "GcdRec",
+        "Memory"
+      ];
+
+      body.innerHTML = tests
+        .map(
+          name => `<input id="${name}" type="button" value="Execute ${name}" />`
+        )
+        .join("");
+
+      const click = async event => {
+        try {
+          const { time0, time1, time2, LLVMCode } = await execute(
+            event.target.id
+          );
+          console.log(time1 - time0, time2 - time1);
+          body.innerText = LLVMCode;
+        } catch (e) {
+          body.innerText = e;
         }
       };
+
+      tests.forEach(name => {
+        const button = document.getElementById(name);
+        button.onclick = click;
+      });
     </script>
   </head>
-  <body>
-    <pre contenteditable="true">FastInverseSquareRoot.js</pre>
-    <input id="button" type="button" value="Fetch & Compile" />
-  </body>
+  <body></body>
 </html>

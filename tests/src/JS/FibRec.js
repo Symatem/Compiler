@@ -1,4 +1,4 @@
-function(program) {
+export default function(program) {
     const [fibRecOperator, fibRecOperations] = program.createOperator(2),
           [thenOperator, thenOperations] = program.createOperator(0),
           [elseOperator, elseOperations] = program.createOperator(5);

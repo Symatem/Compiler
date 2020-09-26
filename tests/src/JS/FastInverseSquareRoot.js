@@ -1,4 +1,4 @@
-function(program) {
+export default function(program) {
     const [fisrOperator, fisrOperations] = program.createOperator(9),
           encodingNatural32 = program.backend.getPairOptionally(program.backend.symbolByName.Natural32, program.backend.symbolByName.PlaceholderEncoding),
           encodingFloat32 = program.backend.getPairOptionally(program.backend.symbolByName.Float32, program.backend.symbolByName.PlaceholderEncoding);

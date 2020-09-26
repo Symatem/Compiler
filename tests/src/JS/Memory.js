@@ -1,4 +1,4 @@
-function(program) {
+export default function(program) {
     const [memoryOperator, memoryOperations] = program.createOperator(3),
           encoding = program.backend.getPairOptionally(program.backend.symbolByName.Natural32, program.backend.symbolByName.PlaceholderEncoding);
 

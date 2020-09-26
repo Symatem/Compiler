@@ -1,4 +1,4 @@
-function(program) {
+export default function(program) {
     const [gcdRecOperator, gcdRecOperations] = program.createOperator(2),
           [thenOperator, thenOperations] = program.createOperator(0),
           [elseOperator, elseOperations] = program.createOperator(2);

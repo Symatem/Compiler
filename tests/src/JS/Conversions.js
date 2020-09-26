@@ -1,4 +1,4 @@
-function(program) {
+export default function(program) {
     const [conversionsOperator, conversionsOperations] = program.createOperator(10),
           encodingNatural32 = program.backend.getPairOptionally(program.backend.symbolByName.Natural32, program.backend.symbolByName.PlaceholderEncoding),
           encodingNatural64 = program.backend.getPairOptionally(program.backend.symbolByName.Natural64, program.backend.symbolByName.PlaceholderEncoding),
