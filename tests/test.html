@@ -57,10 +57,7 @@
         }
       };
 
-      tests.forEach(name => {
-        const button = document.getElementById(name);
-        button.onclick = click;
-      });
+      tests.forEach(name => document.getElementById(name).onclick = click);
     </script>
   </head>
   <body></body>
