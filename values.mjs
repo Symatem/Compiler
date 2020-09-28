@@ -1,6 +1,6 @@
-import { LLVMType, LLVMIntegerType, LLVMFloatType, LLVMPointerType, LLVMCompositeType, LLVMVectorType, LLVMArrayType, LLVMStructureType } from './LLVM/Type.js';
-import { LLVMValue, LLVMConstant, LLVMLiteralConstant, LLVMTextConstant, LLVMCompositeConstant } from './LLVM/Value.js';
-import { log, throwError, throwWarning } from './stackTrace.js';
+import { LLVMType, LLVMIntegerType, LLVMFloatType, LLVMPointerType, LLVMCompositeType, LLVMVectorType, LLVMArrayType, LLVMStructureType } from './LLVM/Type.mjs';
+import { LLVMValue, LLVMConstant, LLVMLiteralConstant, LLVMTextConstant, LLVMCompositeConstant } from './LLVM/Value.mjs';
+import { log, throwError, throwWarning } from './stackTrace.mjs';
 
 
 

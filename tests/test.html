@@ -12,7 +12,7 @@
 
       async function execute(name) {
         const time0 = performance.now();
-        const module = await import(`./src/JS/${name}.js`);
+        const module = await import(`./src/JS/${name}.mjs`);
         const time1 = performance.now();
         const inputs = module.default(program);
         try {

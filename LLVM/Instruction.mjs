@@ -1,5 +1,5 @@
-import { LLVMIntegerType, LLVMFloatType, LLVMFunctionType } from './Type.js';
-import { LLVMValue, LLVMFunction } from './Value.js';
+import { LLVMIntegerType, LLVMFloatType, LLVMFunctionType } from './Type.mjs';
+import { LLVMValue, LLVMFunction } from './Value.mjs';
 
 export class LLVMInstruction {
 

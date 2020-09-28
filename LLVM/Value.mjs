@@ -34,7 +34,7 @@ export class LLVMTextConstant extends LLVMLiteralConstant {
     }
 }
 
-import { LLVMType, LLVMVectorType, LLVMArrayType, LLVMStructureType, LLVMFunctionType } from './Type.js';
+import { LLVMType, LLVMVectorType, LLVMArrayType, LLVMStructureType, LLVMFunctionType } from './Type.mjs';
 export class LLVMCompositeConstant extends LLVMConstant {
     constructor(type, elements) {
         super(type);
@@ -57,7 +57,7 @@ export class LLVMCompositeConstant extends LLVMConstant {
     }
 }
 
-import { LLVMTerminatoryInstruction } from './Instruction.js';
+import { LLVMTerminatoryInstruction } from './Instruction.mjs';
 export class LLVMBasicBlock extends LLVMConstant {
     constructor(name, instructions = []) {
         super(new LLVMType('label'), name);

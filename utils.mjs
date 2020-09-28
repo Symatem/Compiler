@@ -1,8 +1,8 @@
-import { LLVMStructureType, LLVMPointerType, LLVMIntegerType } from './LLVM/Type.js';
-import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.js';
-import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction, LLVMCastInstruction } from './LLVM/Instruction.js';
-import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.js';
-import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.js';
+import { LLVMStructureType, LLVMPointerType, LLVMIntegerType } from './LLVM/Type.mjs';
+import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.mjs';
+import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction, LLVMCastInstruction } from './LLVM/Instruction.mjs';
+import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.mjs';
+import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.mjs';
 import { Utils, SymbolInternals } from '../SymatemJS/SymatemJS.mjs';
 
 

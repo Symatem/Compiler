@@ -1,7 +1,7 @@
 import { primitiveDeferEvaluation, primitiveBundle, primitiveUnbundle,
 primitiveStackAllocate, primitiveLoad, primitiveStore, primitiveConversion,
 primitiveDivision, primitiveBinaryInstruction, compileBitShift, compileBinaryArithmetic, compileBinaryComparison,
-primitiveIf } from './primitives.js';
+primitiveIf } from './primitives.mjs';
 
 
 export const typedPlaceholderCache = new Map();

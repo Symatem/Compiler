@@ -11,10 +11,10 @@ compileC: $(LLVM_C)
 build/LLVM/%_C.ll: src/C/%.c
 	$(LLVM_BIN)/clang -target arm64--unknown-macho $(COMPILER_FLAGS) -O3 -S -emit-llvm -o $@ $^
 
-SRC_SYMATEM := $(wildcard src/JS/*.js)
-LLVM_SYMATEM_RAW := $(SRC_SYMATEM:src/JS/%.js=build/LLVM/%_SymatemRaw.ll)
+SRC_SYMATEM := $(wildcard src/JS/*.mjs)
+LLVM_SYMATEM_RAW := $(SRC_SYMATEM:src/JS/%.mjs=build/LLVM/%_SymatemRaw.ll)
 compileSymatem: $(LLVM_SYMATEM_RAW)
-build/LLVM/%_SymatemRaw.ll: src/JS/%.js
+build/LLVM/%_SymatemRaw.ll: src/JS/%.mjs
 	node --experimental-modules compile.mjs $^ $@
 
 LLVM_SYMATEM := $(LLVM_SYMATEM_RAW:build/LLVM/%_SymatemRaw.ll=build/LLVM/%_Symatem.ll)

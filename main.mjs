@@ -1,10 +1,10 @@
-import { LLVMTypeCache } from './LLVM/Type.js';
-import { LLVMBasicBlock } from './LLVM/Value.js';
-import { LLVMModule } from './LLVM/Module.js';
-import { bundleOperands, operandsToLlvmValues } from './values.js';
-import { hashOfOperands, buildLlvmBundle, unbundleAndMixOperands, customOperator } from './utils.js';
-import { throwError, pushStackFrame } from './stackTrace.js';
-import { typedPlaceholderCache, primitiveLookupMap, initializeBackend } from './symbols.js';
+import { LLVMTypeCache } from './LLVM/Type.mjs';
+import { LLVMBasicBlock } from './LLVM/Value.mjs';
+import { LLVMModule } from './LLVM/Module.mjs';
+import { bundleOperands, operandsToLlvmValues } from './values.mjs';
+import { hashOfOperands, buildLlvmBundle, unbundleAndMixOperands, customOperator } from './utils.mjs';
+import { throwError, pushStackFrame } from './stackTrace.mjs';
+import { typedPlaceholderCache, primitiveLookupMap, initializeBackend } from './symbols.mjs';
 import { SymbolInternals, Utils } from '../SymatemJS/SymatemJS.mjs';
 
 
