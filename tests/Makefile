@@ -15,7 +15,7 @@ SRC_SYMATEM := $(wildcard src/JS/*.mjs)
 LLVM_SYMATEM_RAW := $(SRC_SYMATEM:src/JS/%.mjs=build/LLVM/%_SymatemRaw.ll)
 compileSymatem: $(LLVM_SYMATEM_RAW)
 build/LLVM/%_SymatemRaw.ll: src/JS/%.mjs
-	node --experimental-modules compile.mjs $^ $@
+	node compile.mjs $^ $@
 
 LLVM_SYMATEM := $(LLVM_SYMATEM_RAW:build/LLVM/%_SymatemRaw.ll=build/LLVM/%_Symatem.ll)
 optimizeSymatem: $(LLVM_SYMATEM)
