@@ -1,6 +1,6 @@
 {
   "name": "@symatem/compiler",
   "dependencies": {
-    "SymatemJS": "*"
+    "@symatem/core": "git+https://github.com/Symatem/SymatemJS.git"
   }
 }
