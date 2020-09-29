@@ -1,11 +1,10 @@
 import { LLVMIntegerType, LLVMPointerType } from './LLVM/Type.mjs';
-import { LLVMValue, LLVMBasicBlock, LLVMFunction } from './LLVM/Value.mjs';
+import { LLVMValue, LLVMBasicBlock } from './LLVM/Value.mjs';
 import { LLVMBranchInstruction, LLVMConditionalBranchInstruction, LLVMBinaryInstruction, LLVMCompareInstruction, LLVMPhiInstruction, LLVMAllocaInstruction, LLVMCastInstruction, LLVMLoadInstruction, LLVMStoreInstruction } from './LLVM/Instruction.mjs';
-import { LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues, llvmTypeAndTypedPlaceholderOfEncoding, getLlvmValue } from './values.mjs';
-import { copyAndRenameOperand, collectDestinations, propagateSources, buildLlvmBundle, unbundleAndMixOperands, buildLlvmCall, buildLLVMFunction, finishExecution, pointerCast } from './utils.mjs';
-import { throwError, throwWarning, popStackFrame } from './stackTrace.mjs';
+import { LLVMVoidConstant, unbundleOperands, llvmTypeAndTypedPlaceholderOfEncoding, getLlvmValue } from './values.mjs';
+import { copyAndRenameOperand, buildLlvmBundle, buildLlvmCall, buildLLVMFunction, finishExecution, pointerCast } from './utils.mjs';
+import { throwError, popStackFrame } from './stackTrace.mjs';
 import { llvmLookupMaps } from './symbols.mjs';
-import { Utils } from '../SymatemJS/SymatemJS.mjs';
 
 
 

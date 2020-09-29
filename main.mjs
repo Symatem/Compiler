@@ -1,4 +1,3 @@
-import { LLVMTypeCache } from './LLVM/Type.mjs';
 import { LLVMBasicBlock } from './LLVM/Value.mjs';
 import { LLVMModule } from './LLVM/Module.mjs';
 import { bundleOperands, operandsToLlvmValues } from './values.mjs';
