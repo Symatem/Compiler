@@ -3,7 +3,7 @@ import { LLVMValue, LLVMLiteralConstant, LLVMFunction } from './LLVM/Value.mjs';
 import { LLVMExtractValueInstruction, LLVMInsertValueInstruction, LLVMCallInstruction, LLVMReturnInstruction, LLVMCastInstruction } from './LLVM/Instruction.mjs';
 import { LLVMSymbolType, LLVMVoidConstant, bundleOperands, unbundleOperands, operandsToLlvmValues } from './values.mjs';
 import { log, throwError, throwWarning, pushStackFrame, popStackFrame } from './stackTrace.mjs';
-import { Utils, SymbolInternals } from '../SymatemJS/SymatemJS.mjs';
+import { Utils, SymbolInternals } from './node_modules/@symatem/core/SymatemJS.mjs';
 
 
 

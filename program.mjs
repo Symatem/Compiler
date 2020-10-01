@@ -1,4 +1,4 @@
-import { SymbolInternals } from '../SymatemJS/SymatemJS.mjs';
+import { SymbolInternals } from './node_modules/@symatem/core/SymatemJS.mjs';
 
 
 

@@ -4,7 +4,7 @@ import { bundleOperands, operandsToLlvmValues } from './values.mjs';
 import { hashOfOperands, buildLlvmBundle, unbundleAndMixOperands, customOperator } from './utils.mjs';
 import { throwError, pushStackFrame } from './stackTrace.mjs';
 import { typedPlaceholderCache, primitiveLookupMap, initializeBackend } from './symbols.mjs';
-import { SymbolInternals, Utils } from '../SymatemJS/SymatemJS.mjs';
+import { SymbolInternals, Utils } from './node_modules/@symatem/core/SymatemJS.mjs';
 
 
 export class CompilerContext {
