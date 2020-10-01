@@ -30,6 +30,7 @@
       }
 
       const body = document.body;
+      const result = document.getElementById("result");
 
       const tests = [
         "Conversions",
@@ -39,7 +40,7 @@
         "Memory"
       ];
 
-      body.innerHTML = tests
+      document.getElementById("items").innerHTML = tests
         .map(
           name => `<input id="${name}" type="button" value="Execute ${name}" />`
         )
@@ -47,18 +48,21 @@
 
       const click = async event => {
         try {
+          result.innerText = '';
           const { time0, time1, time2, LLVMCode } = await execute(
             event.target.id
           );
-          console.log(time1 - time0, time2 - time1);
-          body.innerText = LLVMCode;
+          result.innerText = `T1: ${time1 - time0} T2: ${time2 - time1}\n` + LLVMCode;
         } catch (e) {
-          body.innerText = e;
+          result.innerText = e;
         }
       };
 
-      tests.forEach(name => document.getElementById(name).onclick = click);
+      tests.forEach(name => (document.getElementById(name).onclick = click));
     </script>
   </head>
-  <body></body>
+  <body>
+    <div id="items"></div>
+    <div id="result"></div>
+  </body>
 </html>
