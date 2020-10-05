@@ -1,14 +1,11 @@
-import { LLVMIntegerType, LLVMFloatType, LLVMFunctionType } from './Type.mjs';
-import { LLVMValue, LLVMFunction } from './Value.mjs';
+import { LLVMFloatType } from './Type.mjs';
+import {  LLVMFunction } from './Value.mjs';
 
 export class LLVMInstruction {
 
 }
 
 export class LLVMTerminatoryInstruction extends LLVMInstruction {
-    constructor() {
-        super();
-    }
 }
 
 export class LLVMReturnInstruction extends LLVMTerminatoryInstruction {
@@ -90,10 +87,6 @@ export class LLVMSwitchInstruction extends LLVMTerminatoryInstruction {
 // LLVMCleanupReturnInstruction
 
 export class LLVMUnreachableInstruction extends LLVMTerminatoryInstruction {
-    constructor() {
-        super();
-    }
-
     serialize() {
         return 'unreachable';
     }
