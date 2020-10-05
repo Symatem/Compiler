@@ -1,5 +1,13 @@
 {
   "name": "@symatem/compiler",
+  "version": "0.0.0-semantic-release",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./src/main.mjs",
+  "exports": {
+    ".": "./src/main.mjs"
+  },
   "dependencies": {
     "@symatem/core": "git+https://github.com/Symatem/SymatemJS.git"
   }
