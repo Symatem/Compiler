@@ -49,9 +49,6 @@ export class LLVMPointerType extends LLVMType {
 }
 
 export class LLVMCompositeType extends LLVMType {
-    constructor(name) {
-        super(name);
-    }
 }
 
 export class LLVMVectorType extends LLVMCompositeType {
