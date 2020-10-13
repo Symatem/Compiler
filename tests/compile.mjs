@@ -1,5 +1,5 @@
 import { JavaScriptBackend } from '../SymatemJS/SymatemJS.mjs';
-import { CompilerContext } from '../main.mjs';
+import { CompilerContext } from '../src/main.mjs';
 import {readFileSync,writeFileSync} from 'fs';
 
 const context = new CompilerContext(new JavaScriptBackend()),

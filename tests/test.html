@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <script type="module">
       import { JavaScriptBackend } from "../node_modules/@symatem/core/SymatemJS.mjs";
-      import { CompilerContext } from "../main.mjs";
-      import { Program } from "../program.mjs";
+      import { CompilerContext } from "../src/main.mjs";
+      import { Program } from "../src/program.mjs";
 
       const context = new CompilerContext(new JavaScriptBackend()),
         program = new Program(context.backend);
