@@ -9,6 +9,6 @@
     ".": "./src/main.mjs"
   },
   "dependencies": {
-    "@symatem/core": "git+https://github.com/Symatem/SymatemJS.git"
+    "@symatem/core": "^0.0.2"
   }
 }
