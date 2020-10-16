@@ -9,6 +9,6 @@
     ".": "./src/main.mjs"
   },
   "dependencies": {
-    "@symatem/core": "^0.0.6"
+    "@symatem/core": "^0.0.8"
   }
 }
